@@ -1,11 +1,26 @@
 (function attachBackgroundOpenAiSessionReader(root, factory) {
   root.MultiPageBackgroundOpenAiSessionReader = factory();
 })(typeof self !== 'undefined' ? self : globalThis, function createBackgroundOpenAiSessionReaderModule() {
-  const PLUS_CHECKOUT_SOURCE = 'plus-checkout';
-  const PLUS_CHECKOUT_INJECT_FILES = ['content/utils.js', 'content/operation-delay.js', 'flows/openai/content/plus-checkout.js'];
+  const OPENAI_SESSION_SOURCE = 'openai-session';
+  const OPENAI_SESSION_INJECT_FILES = [
+    'content/utils.js',
+    'flows/openai/content/chatgpt-session.js',
+  ];
+  const OPENAI_SESSION_MESSAGE = Object.freeze({
+    type: 'OPENAI_SESSION_GET_CURRENT',
+    source: 'background',
+  });
+  const SESSION_INITIAL_DELAY_MS = 1000;
+  const SESSION_RETRY_DELAY_MS = 2000;
+  const SESSION_READ_MAX_ATTEMPTS = 11;
+  const SUPPORTED_REQUIRED_FIELDS = Object.freeze(['session', 'accessToken']);
 
   function normalizeString(value = '') {
     return String(value || '').trim();
+  }
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
   }
 
   function isSupportedChatGptSessionUrl(url = '') {
@@ -14,10 +29,10 @@
       if (!/^https?:$/i.test(parsed.protocol)) {
         return false;
       }
-      const hostname = String(parsed.hostname || '').trim().toLowerCase();
-      return /(^|\.)chatgpt\.com$/.test(hostname)
-        || hostname === 'chat.openai.com'
-        || /(^|\.)openai\.com$/.test(hostname);
+      const hostname = normalizeString(parsed.hostname).toLowerCase();
+      return hostname === 'chatgpt.com'
+        || hostname === 'www.chatgpt.com'
+        || hostname === 'chat.openai.com';
     } catch {
       return false;
     }
@@ -25,15 +40,12 @@
 
   function getSessionTabHostPriority(url = '') {
     try {
-      const hostname = String(new URL(String(url || '')).hostname || '').trim().toLowerCase();
-      if (/(^|\.)chatgpt\.com$/.test(hostname)) {
+      const hostname = normalizeString(new URL(String(url || '')).hostname).toLowerCase();
+      if (hostname === 'chatgpt.com' || hostname === 'www.chatgpt.com') {
         return 0;
       }
       if (hostname === 'chat.openai.com') {
         return 1;
-      }
-      if (/(^|\.)openai\.com$/.test(hostname)) {
-        return 2;
       }
     } catch {
       return Number.POSITIVE_INFINITY;
@@ -85,6 +97,61 @@
     }, null);
   }
 
+  function normalizeAutomationWindowId(state = {}) {
+    const windowId = Number(state?.automationWindowId);
+    return Number.isInteger(windowId) && windowId > 0 ? windowId : 0;
+  }
+
+  function normalizeRequiredFields(requiredFields) {
+    if (requiredFields === undefined) {
+      return ['session'];
+    }
+    if (!Array.isArray(requiredFields) || !requiredFields.length) {
+      throw new Error('OpenAI session reader 的 requiredFields 必须是非空数组。');
+    }
+
+    const normalized = Array.from(new Set(requiredFields.map((field) => normalizeString(field))));
+    const unsupportedFields = normalized.filter((field) => !SUPPORTED_REQUIRED_FIELDS.includes(field));
+    if (unsupportedFields.length) {
+      throw new Error(`OpenAI session reader 的 requiredFields 包含不支持的字段：${unsupportedFields.join(', ')}`);
+    }
+    return normalized;
+  }
+
+  function normalizeSessionResult(result, visibleStep) {
+    if (!isPlainObject(result)) {
+      throw new Error(`步骤 ${visibleStep}：ChatGPT 会话消息协议返回格式无效。`);
+    }
+    if (result.stopped) {
+      throw new Error(normalizeString(result.error) || '流程已被用户停止。');
+    }
+    if (result.ok !== true) {
+      throw new Error(normalizeString(result.error) || `步骤 ${visibleStep}：ChatGPT 会话消息协议执行失败。`);
+    }
+
+    const session = isPlainObject(result.session) ? result.session : null;
+    return {
+      session,
+      accessToken: normalizeString(
+        result.accessToken
+        || session?.accessToken
+        || session?.access_token
+      ),
+    };
+  }
+
+  function getMissingRequiredFields(sessionState = {}, requiredFields = []) {
+    return requiredFields.filter((field) => {
+      if (field === 'session') {
+        return !isPlainObject(sessionState.session) || !Object.keys(sessionState.session).length;
+      }
+      if (field === 'accessToken') {
+        return !normalizeString(sessionState.accessToken);
+      }
+      return true;
+    });
+  }
+
   function createOpenAiSessionReader(deps = {}) {
     const {
       chrome,
@@ -97,21 +164,30 @@
       waitForTabCompleteUntilStopped = async () => {},
     } = deps;
 
-    async function readSupportedSessionTab(tabId) {
+    async function readSupportedSessionTab(tabId, automationWindowId = 0) {
       const numericTabId = Number(tabId) || 0;
       if (!numericTabId || !chrome?.tabs?.get) {
         return null;
       }
 
       const tab = await chrome.tabs.get(numericTabId).catch(() => null);
-      return tab?.id && isSupportedChatGptSessionUrl(tab.url)
-        ? tab
-        : null;
+      if (!tab?.id || !isSupportedChatGptSessionUrl(tab.url)) {
+        return null;
+      }
+      if (automationWindowId && Number(tab.windowId) !== automationWindowId) {
+        return null;
+      }
+      return tab;
     }
 
-    async function findFallbackSessionTab() {
+    async function findFallbackSessionTab(automationWindowId = 0) {
       if (!chrome?.tabs?.query) {
         return null;
+      }
+
+      if (automationWindowId) {
+        const windowTabs = await chrome.tabs.query({ windowId: automationWindowId }).catch(() => []);
+        return pickPreferredSessionTab(windowTabs);
       }
 
       const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
@@ -122,93 +198,94 @@
     }
 
     async function resolveSessionTabId(state = {}) {
+      const automationWindowId = normalizeAutomationWindowId(state);
       const registeredTabId = typeof getTabId === 'function'
-        ? await getTabId(PLUS_CHECKOUT_SOURCE)
+        ? await getTabId(OPENAI_SESSION_SOURCE)
         : null;
-      if (registeredTabId && typeof isTabAlive === 'function' && await isTabAlive(PLUS_CHECKOUT_SOURCE)) {
-        const registeredTab = await readSupportedSessionTab(registeredTabId);
+      const registeredTabAlive = registeredTabId
+        && (typeof isTabAlive !== 'function' || await isTabAlive(OPENAI_SESSION_SOURCE));
+      if (registeredTabAlive) {
+        const registeredTab = await readSupportedSessionTab(registeredTabId, automationWindowId);
         if (registeredTab?.id) {
           return registeredTab.id;
         }
       }
 
-      const storedTabId = Number(state?.plusCheckoutTabId) || 0;
-      const storedTab = await readSupportedSessionTab(storedTabId);
-      if (storedTab?.id) {
-        if (typeof registerTab === 'function') {
-          await registerTab(PLUS_CHECKOUT_SOURCE, storedTab.id);
-        }
-        return storedTab.id;
-      }
-
-      const fallbackTab = await findFallbackSessionTab();
+      const fallbackTab = await findFallbackSessionTab(automationWindowId);
       if (fallbackTab?.id) {
         if (typeof registerTab === 'function') {
-          await registerTab(PLUS_CHECKOUT_SOURCE, fallbackTab.id);
+          await registerTab(OPENAI_SESSION_SOURCE, fallbackTab.id);
         }
         return fallbackTab.id;
       }
 
-      throw new Error('未找到可读取 ChatGPT 会话的标签页，请先打开一个已登录的 ChatGPT / OpenAI 页面，或完成当前 Plus 支付链路。');
+      const windowHint = automationWindowId ? '当前自动化窗口内' : '';
+      throw new Error(`未找到可读取 ChatGPT 会话的标签页，请先在${windowHint || '浏览器中'}打开一个已登录的 ChatGPT 页面。`);
     }
 
-    async function getResolvedSessionTab(tabId, visibleStep, targetLabel = '') {
+    async function getResolvedSessionTab(tabId, visibleStep, targetLabel = '', automationWindowId = 0) {
       const tab = await chrome?.tabs?.get?.(tabId).catch(() => null);
-      if (!tab?.id) {
-        throw new Error(`步骤 ${visibleStep}：ChatGPT 会话标签页不存在或已关闭，无法继续导入${targetLabel ? ` ${targetLabel}` : ''}。`);
+      const targetSuffix = targetLabel ? `，无法继续交付到 ${targetLabel}` : '';
+      if (!tab?.id || (automationWindowId && Number(tab.windowId) !== automationWindowId)) {
+        throw new Error(`步骤 ${visibleStep}：ChatGPT 会话标签页不存在、已关闭或已离开当前自动化窗口${targetSuffix}。`);
       }
       if (!isSupportedChatGptSessionUrl(tab.url)) {
-        throw new Error(`步骤 ${visibleStep}：当前标签页不在 ChatGPT / OpenAI 页面，无法读取当前登录会话。`);
+        throw new Error(`步骤 ${visibleStep}：当前标签页不在可读取 ChatGPT 会话的页面${targetSuffix}。`);
       }
       return tab;
     }
 
-    async function readCurrentChatGptSession(tabId, visibleStep) {
+    async function readCurrentChatGptSession(tabId, visibleStep, options = {}) {
+      const requiredFields = normalizeRequiredFields(options.requiredFields);
+      const targetLabel = normalizeString(options.targetLabel);
+      const automationWindowId = Math.max(0, Number(options.automationWindowId) || 0);
+
       await waitForTabCompleteUntilStopped(tabId);
-      await sleepWithStop(1000);
-      await ensureContentScriptReadyOnTabUntilStopped(PLUS_CHECKOUT_SOURCE, tabId, {
-        inject: PLUS_CHECKOUT_INJECT_FILES,
-        injectSource: PLUS_CHECKOUT_SOURCE,
+      await sleepWithStop(SESSION_INITIAL_DELAY_MS);
+      await ensureContentScriptReadyOnTabUntilStopped(OPENAI_SESSION_SOURCE, tabId, {
+        inject: OPENAI_SESSION_INJECT_FILES,
+        injectSource: OPENAI_SESSION_SOURCE,
         logMessage: `步骤 ${visibleStep}：正在等待 ChatGPT 会话页面完成加载，再继续读取当前登录会话...`,
       });
 
-      const sessionResult = await sendTabMessageUntilStopped(tabId, PLUS_CHECKOUT_SOURCE, {
-        type: 'PLUS_CHECKOUT_GET_STATE',
-        source: 'background',
-        payload: {
-          includeSession: true,
-          includeAccessToken: true,
-        },
-      });
-      if (sessionResult?.error) {
-        throw new Error(sessionResult.error);
+      let missingFields = requiredFields;
+      for (let attempt = 1; attempt <= SESSION_READ_MAX_ATTEMPTS; attempt += 1) {
+        await getResolvedSessionTab(tabId, visibleStep, targetLabel, automationWindowId);
+        const rawResult = await sendTabMessageUntilStopped(
+          tabId,
+          OPENAI_SESSION_SOURCE,
+          OPENAI_SESSION_MESSAGE
+        );
+        const sessionState = normalizeSessionResult(rawResult, visibleStep);
+        missingFields = getMissingRequiredFields(sessionState, requiredFields);
+        if (!missingFields.length) {
+          return sessionState;
+        }
+        if (attempt < SESSION_READ_MAX_ATTEMPTS) {
+          await sleepWithStop(SESSION_RETRY_DELAY_MS);
+        }
       }
 
-      const session = sessionResult?.session && typeof sessionResult.session === 'object' && !Array.isArray(sessionResult.session)
-        ? sessionResult.session
-        : null;
-      const accessToken = normalizeString(
-        sessionResult?.accessToken
-        || session?.accessToken
+      throw new Error(
+        `步骤 ${visibleStep}：连续读取 ${SESSION_READ_MAX_ATTEMPTS} 次仍未获取必需字段 ${missingFields.join(', ')}，请确认 ChatGPT 已登录。`
       );
-      if (!session && !accessToken) {
-        throw new Error(`步骤 ${visibleStep}：未读取到有效的 ChatGPT 会话或 accessToken，请确认当前标签页仍处于已登录状态。`);
-      }
-
-      return {
-        session,
-        accessToken,
-      };
     }
 
     async function readCurrentSessionFromState(state = {}, options = {}) {
+      const requiredFields = normalizeRequiredFields(options.requiredFields);
       const visibleStep = Math.max(1, Math.floor(Number(options?.visibleStep ?? state?.visibleStep) || 0) || 10);
+      const targetLabel = normalizeString(options.targetLabel);
+      const automationWindowId = normalizeAutomationWindowId(state);
       const tabId = await resolveSessionTabId(state);
-      const tab = await getResolvedSessionTab(tabId, visibleStep, options?.targetLabel || '');
+      const tab = await getResolvedSessionTab(tabId, visibleStep, targetLabel, automationWindowId);
       if (chrome?.tabs?.update && options?.activateTab !== false) {
         await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
       }
-      const sessionState = await readCurrentChatGptSession(tab.id, visibleStep);
+      const sessionState = await readCurrentChatGptSession(tab.id, visibleStep, {
+        automationWindowId,
+        requiredFields,
+        targetLabel,
+      });
       return {
         ...sessionState,
         tab,
@@ -225,8 +302,11 @@
   }
 
   return {
-    PLUS_CHECKOUT_INJECT_FILES,
-    PLUS_CHECKOUT_SOURCE,
+    OPENAI_SESSION_INJECT_FILES,
+    OPENAI_SESSION_SOURCE,
+    SESSION_INITIAL_DELAY_MS,
+    SESSION_READ_MAX_ATTEMPTS,
+    SESSION_RETRY_DELAY_MS,
     createOpenAiSessionReader,
     isSupportedChatGptSessionUrl,
     pickPreferredSessionTab,

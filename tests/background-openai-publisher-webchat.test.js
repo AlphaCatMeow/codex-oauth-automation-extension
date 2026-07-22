@@ -125,6 +125,7 @@ test('OpenAI webchat executor reads latest state and writes upload status withou
   const logs = [];
   const broadcasts = [];
   const completed = [];
+  const sessionReadCalls = [];
   let liveState = {
     openaiWebchatUrl: '',
     openaiWebchatAdminKey: '',
@@ -146,14 +147,17 @@ test('OpenAI webchat executor reads latest state and writes upload status withou
     broadcastDataUpdate: (updates) => broadcasts.push(updates),
     completeNodeFromBackground: async (nodeId, payload) => completed.push({ nodeId, payload }),
     createOpenAiSessionReader: () => ({
-      readCurrentSessionFromState: async () => ({
-        session: {
+      readCurrentSessionFromState: async (state, options) => {
+        sessionReadCalls.push({ state, options });
+        return {
+          session: {
+            accessToken: 'live-session-token',
+            user: { email: 'flow@example.com' },
+          },
           accessToken: 'live-session-token',
-          user: { email: 'flow@example.com' },
-        },
-        accessToken: 'live-session-token',
-        tabId: 91,
-      }),
+          tabId: 91,
+        };
+      },
     }),
     fetchImpl: async (url, options = {}) => {
       requests.push({
@@ -181,6 +185,12 @@ test('OpenAI webchat executor reads latest state and writes upload status withou
   assert.equal(requests[0].body.provider, 'gpt');
   assert.equal(requests[0].body.accounts[0].provider, 'gpt');
   assert.equal(requests[0].body.accounts[0].access_token, 'live-session-token');
+  assert.equal(sessionReadCalls.length, 1);
+  assert.deepEqual(sessionReadCalls[0].options, {
+    visibleStep: 12,
+    targetLabel: 'webchat',
+    requiredFields: ['session'],
+  });
   assert.equal(completed.length, 1);
   assert.equal(completed[0].nodeId, 'openai-upload-session-to-webchat');
   assert.equal(completed[0].payload.openaiWebchatUploadStatus, 'uploaded');

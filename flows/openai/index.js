@@ -208,6 +208,34 @@
         }
       ]
     },
+    "openai-session": {
+      "flowId": "openai",
+      "kind": "flow-page",
+      "label": "ChatGPT 会话",
+      "readyPolicy": "top-frame-only",
+      "family": "openai-session-family",
+      "driverId": "flows/openai/content/chatgpt-session",
+      "cleanupScopes": [],
+      "detectionPriority": 100,
+      "detectionMatchers": [
+        {
+          "hostnames": [
+            "chatgpt.com",
+            "www.chatgpt.com",
+            "chat.openai.com"
+          ]
+        }
+      ],
+      "familyMatchers": [
+        {
+          "hostnames": [
+            "chatgpt.com",
+            "www.chatgpt.com",
+            "chat.openai.com"
+          ]
+        }
+      ]
+    },
     "vps-panel": {
       "flowId": "openai",
       "kind": "panel-page",
@@ -314,6 +342,17 @@
       "family": "plus-checkout-family",
       "driverId": "flows/openai/content/plus-checkout",
       "cleanupScopes": [],
+      "detectionPriority": 200,
+      "detectionMatchers": [
+        {
+          "hostnames": [
+            "chatgpt.com"
+          ],
+          "pathPrefixes": [
+            "/checkout/"
+          ]
+        }
+      ],
       "familyMatchers": [
         {
           "hostnames": [
@@ -388,6 +427,12 @@
         "paypal-hosted-openai-checkout",
         "plus-checkout-billing",
         "plus-checkout-return"
+      ]
+    },
+    "flows/openai/content/chatgpt-session": {
+      "sourceId": "openai-session",
+      "commands": [
+        "OPENAI_SESSION_GET_CURRENT"
       ]
     },
     "flows/openai/content/paypal-flow": {

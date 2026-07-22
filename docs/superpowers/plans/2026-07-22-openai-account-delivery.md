@@ -131,7 +131,7 @@ OpenAI target capability 写入设计中的支持列表、默认值与 route；�
 
 运行定向测试、全部修改 JS 的 `node --check`、完整 `npm test`、乱码检查和 `git diff --check`。
 
-- [ ] **Step 4: 提交阶段 1**
+- [x] **Step 4: 提交阶段 1**
 
 ```powershell
 git commit -m "feat: 建立 OpenAI 账号交付能力模型"
@@ -158,7 +158,7 @@ git commit -m "feat: 建立 OpenAI 账号交付能力模型"
 - Modify: `background.js`
 - Modify: `项目文件结构说明.md`
 
-- [ ] **Step 1: 写协议、source 优先级、窗口锁和重试失败测试**
+- [x] **Step 1: 写协议、source 优先级、窗口锁和重试失败测试**
 
 内容脚本只响应：
 
@@ -178,15 +178,15 @@ reader.readCurrentSessionFromState(state, {
 
 测试覆盖 checkout URL 解析为 `plus-checkout`、普通 ChatGPT URL 解析为 `openai-session`；有 `automationWindowId` 时所有候选标签必须来自该窗口；缺少必需字段时 11 次读取，等待序列为 `1000` 后十次 `2000`；Stop、标签关闭、URL 不支持和协议错误不重试。
 
-- [ ] **Step 2: 实现通用内容脚本与显式 source 优先级**
+- [x] **Step 2: 实现通用内容脚本与显式 source 优先级**
 
 新增 `openai-session` source/driver。`source-registry.js` 按数值 `detectionPriority` 降序检测，未声明时为 0；`plus-checkout` 高于 `openai-session`，避免依赖对象插入顺序。
 
-- [ ] **Step 3: 收敛所有调用方**
+- [x] **Step 3: 收敛所有调用方**
 
 CPA、SUB2API、webchat 请求 `requiredFields: ['session']`；ChatGPT2API 请求 `requiredFields: ['accessToken']`。各步骤不再自行查询标签、注入脚本或发送 `PLUS_CHECKOUT_GET_STATE`。支付步骤继续保留旧 checkout 消息。
 
-- [ ] **Step 4: 验证 GREEN、定向残留与阶段门禁**
+- [x] **Step 4: 验证 GREEN、定向残留与阶段门禁**
 
 ```powershell
 rg -n "PLUS_CHECKOUT_GET_STATE|PLUS_CHECKOUT_SOURCE" flows/openai/background/session-reader.js flows/openai/background/steps/cpa-session-import.js flows/openai/background/steps/sub2api-session-import.js flows/openai/background/publisher-webchat.js flows/openai/background/publisher-chatgpt2api.js

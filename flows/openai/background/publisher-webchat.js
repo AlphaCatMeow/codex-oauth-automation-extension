@@ -235,6 +235,7 @@
         const sessionState = await getSessionReader().readCurrentSessionFromState(currentState, {
           visibleStep,
           targetLabel: 'webchat',
+          requiredFields: ['session'],
         });
 
         await setUploadState({

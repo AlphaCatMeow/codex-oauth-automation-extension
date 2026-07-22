@@ -254,13 +254,14 @@ test('sub2api session import falls back to registration email when session has n
   assert.equal(importBody.name, 'registration@example.com');
 });
 
-test('session import step reads current ChatGPT session and completes node', async () => {
+test('session import step delegates session acquisition to the shared reader', async () => {
   const moduleApi = loadSub2ApiSessionImportModule();
   const completed = [];
   const logs = [];
   const ensureCalls = [];
   const sentMessages = [];
   const importedPayloads = [];
+  const readerCalls = [];
 
   const executor = moduleApi.createSub2ApiSessionImportExecutor({
     addLog: async (message, level = 'info', options = {}) => {
@@ -287,6 +288,22 @@ test('session import step reads current ChatGPT session and completes node', asy
           sub2apiImportUpdated: 0,
           sub2apiImportSkipped: 0,
           sub2apiImportFailed: 0,
+        };
+      },
+    }),
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async (state, options) => {
+        readerCalls.push({ state, options });
+        return {
+          session: {
+            accessToken: 'session-access-token',
+            expires: '2026-05-20T12:34:56.000Z',
+            user: {
+              email: 'flow@example.com',
+            },
+          },
+          accessToken: 'session-access-token',
+          tabId: 91,
         };
       },
     }),
@@ -326,25 +343,24 @@ test('session import step reads current ChatGPT session and completes node', asy
     sub2apiGroupName: 'codex',
   });
 
-  assert.equal(ensureCalls.length, 1);
-  assert.equal(ensureCalls[0].source, 'plus-checkout');
-  assert.deepStrictEqual(ensureCalls[0].options.inject, [
-    'content/utils.js',
-    'content/operation-delay.js',
-    'flows/openai/content/plus-checkout.js',
-  ]);
-  assert.deepStrictEqual(sentMessages, [{
-    tabId: 91,
-    source: 'plus-checkout',
-    message: {
-      type: 'PLUS_CHECKOUT_GET_STATE',
-      source: 'background',
-      payload: {
-        includeSession: true,
-        includeAccessToken: true,
-      },
+  assert.deepStrictEqual(readerCalls, [{
+    state: {
+      nodeId: 'sub2api-session-import',
+      visibleStep: 10,
+      plusCheckoutTabId: 91,
+      sub2apiUrl: 'https://sub.example/admin/accounts',
+      sub2apiEmail: 'admin@example.com',
+      sub2apiPassword: 'secret',
+      sub2apiGroupName: 'codex',
+    },
+    options: {
+      visibleStep: 10,
+      targetLabel: 'SUB2API',
+      requiredFields: ['session'],
     },
   }]);
+  assert.equal(ensureCalls.length, 0);
+  assert.deepStrictEqual(sentMessages, []);
   assert.equal(importedPayloads.length, 1);
   assert.equal(importedPayloads[0].state.accessToken, 'session-access-token');
   assert.equal(importedPayloads[0].state.session.user.email, 'flow@example.com');
@@ -365,7 +381,7 @@ test('session import step reads current ChatGPT session and completes node', asy
   );
 });
 
-test('session import step falls back to an active ChatGPT tab when no checkout tab is tracked', async () => {
+test('session import step does not query or register ChatGPT tabs itself', async () => {
   const moduleApi = loadSub2ApiSessionImportModule();
   const completed = [];
   const importedPayloads = [];
@@ -414,6 +430,18 @@ test('session import step falls back to an active ChatGPT tab when no checkout t
         };
       },
     }),
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async () => ({
+        session: {
+          accessToken: 'session-access-token',
+          user: {
+            email: 'fallback@example.com',
+          },
+        },
+        accessToken: 'session-access-token',
+        tabId: 77,
+      }),
+    }),
     ensureContentScriptReadyOnTabUntilStopped: async () => {},
     getTabId: async () => null,
     isTabAlive: async () => false,
@@ -448,22 +476,15 @@ test('session import step falls back to an active ChatGPT tab when no checkout t
     sub2apiGroupName: 'codex',
   });
 
-  assert.deepStrictEqual(queryCalls, [
-    { active: true, currentWindow: true },
-    {},
-  ]);
-  assert.deepStrictEqual(registerCalls, [{
-    source: 'plus-checkout',
-    tabId: 77,
-  }]);
-  assert.equal(sentMessages.length, 1);
-  assert.equal(sentMessages[0].tabId, 77);
+  assert.deepStrictEqual(queryCalls, []);
+  assert.deepStrictEqual(registerCalls, []);
+  assert.equal(sentMessages.length, 0);
   assert.equal(importedPayloads.length, 1);
   assert.equal(importedPayloads[0].state.session.user.email, 'fallback@example.com');
   assert.equal(completed.length, 1);
 });
 
-test('session import step ignores unusable tracked tabs and prefers a real ChatGPT tab from open tabs', async () => {
+test('session import step leaves tracked tab selection to the shared reader', async () => {
   const moduleApi = loadSub2ApiSessionImportModule();
   const registerCalls = [];
   const sentMessages = [];
@@ -512,6 +533,18 @@ test('session import step ignores unusable tracked tabs and prefers a real ChatG
         verifiedStatus: 'SUB2API 会话导入完成：新建 1，更新 0，跳过 0，失败 0',
       }),
     }),
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async () => ({
+        session: {
+          accessToken: 'session-access-token',
+          user: {
+            email: 'best-match@example.com',
+          },
+        },
+        accessToken: 'session-access-token',
+        tabId: 203,
+      }),
+    }),
     ensureContentScriptReadyOnTabUntilStopped: async () => {},
     getTabId: async () => 91,
     isTabAlive: async () => true,
@@ -546,15 +579,11 @@ test('session import step ignores unusable tracked tabs and prefers a real ChatG
     sub2apiGroupName: 'codex',
   });
 
-  assert.deepStrictEqual(registerCalls, [{
-    source: 'plus-checkout',
-    tabId: 203,
-  }]);
-  assert.equal(sentMessages.length, 1);
-  assert.equal(sentMessages[0].tabId, 203);
+  assert.deepStrictEqual(registerCalls, []);
+  assert.equal(sentMessages.length, 0);
 });
 
-test('session import step reports missing readable session tab when tracked tabs are unusable', async () => {
+test('session import step propagates shared reader failures without calling the target API', async () => {
   const moduleApi = loadSub2ApiSessionImportModule();
   let sendCalled = false;
 
@@ -572,6 +601,11 @@ test('session import step reports missing readable session tab when tracked tabs
     completeNodeFromBackground: async () => {},
     createSub2ApiApi: () => ({
       importCurrentChatGptSession: async () => ({}),
+    }),
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async () => {
+        throw new Error('未找到可读取 ChatGPT 会话的标签页');
+      },
     }),
     ensureContentScriptReadyOnTabUntilStopped: async () => {},
     getTabId: async () => 91,

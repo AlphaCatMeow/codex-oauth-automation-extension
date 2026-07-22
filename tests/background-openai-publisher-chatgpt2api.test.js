@@ -113,6 +113,7 @@ test('OpenAI ChatGPT2API executor reads latest state and writes upload status wi
   const logs = [];
   const broadcasts = [];
   const completed = [];
+  const sessionReadCalls = [];
   let liveState = {
     openaiChatgpt2ApiUrl: '',
     openaiChatgpt2ApiAdminKey: '',
@@ -134,14 +135,17 @@ test('OpenAI ChatGPT2API executor reads latest state and writes upload status wi
     broadcastDataUpdate: (updates) => broadcasts.push(updates),
     completeNodeFromBackground: async (nodeId, payload) => completed.push({ nodeId, payload }),
     createOpenAiSessionReader: () => ({
-      readCurrentSessionFromState: async () => ({
-        session: {
+      readCurrentSessionFromState: async (state, options) => {
+        sessionReadCalls.push({ state, options });
+        return {
+          session: {
+            accessToken: 'live-session-token',
+            user: { email: 'flow@example.com' },
+          },
           accessToken: 'live-session-token',
-          user: { email: 'flow@example.com' },
-        },
-        accessToken: 'live-session-token',
-        tabId: 91,
-      }),
+          tabId: 91,
+        };
+      },
     }),
     fetchImpl: async (url, options = {}) => {
       requests.push({
@@ -167,6 +171,12 @@ test('OpenAI ChatGPT2API executor reads latest state and writes upload status wi
   assert.equal(requests[0].url, 'https://remote.example.com/api/accounts');
   assert.equal(requests[0].authorization, 'Bearer live-admin-key');
   assert.deepEqual(requests[0].body, { tokens: ['live-session-token'] });
+  assert.equal(sessionReadCalls.length, 1);
+  assert.deepEqual(sessionReadCalls[0].options, {
+    visibleStep: 12,
+    targetLabel: 'ChatGPT2API',
+    requiredFields: ['accessToken'],
+  });
   assert.equal(completed.length, 1);
   assert.equal(completed[0].nodeId, 'openai-upload-session-to-chatgpt2api');
   assert.equal(completed[0].payload.openaiChatgpt2ApiUploadStatus, 'uploaded');

@@ -225,6 +225,7 @@
         const sessionState = await getSessionReader().readCurrentSessionFromState(currentState, {
           visibleStep,
           targetLabel: 'ChatGPT2API',
+          requiredFields: ['accessToken'],
         });
 
         await setUploadState({

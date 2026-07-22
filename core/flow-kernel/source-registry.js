@@ -428,7 +428,13 @@
         return 'unknown-source';
       }
 
-      const detectionSourceIds = Object.keys(SOURCE_DEFINITIONS).filter((sourceId) => sourceId !== 'unknown-source');
+      const detectionSourceIds = Object.keys(SOURCE_DEFINITIONS)
+        .filter((sourceId) => sourceId !== 'unknown-source')
+        .sort((leftSourceId, rightSourceId) => {
+          const leftPriority = Number(SOURCE_DEFINITIONS[leftSourceId]?.detectionPriority) || 0;
+          const rightPriority = Number(SOURCE_DEFINITIONS[rightSourceId]?.detectionPriority) || 0;
+          return rightPriority - leftPriority;
+        });
       for (const sourceId of detectionSourceIds) {
         if (matchesSourceDetection(sourceId, candidate.href, candidate.hostname)) {
           return sourceId;
