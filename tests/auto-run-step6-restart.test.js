@@ -813,32 +813,36 @@ test('auto-run restarts Plus checkout from step 6 when billing fails for non-fre
 });
 
 test('auto-run does not reroute SUB2API session import failures into OAuth restarts', async () => {
-  const plusSessionSteps = {
-    6: { key: 'plus-checkout-create' },
-    7: { key: 'plus-checkout-billing' },
-    8: { key: 'paypal-approve' },
-    9: { key: 'plus-checkout-return' },
-    10: { key: 'sub2api-session-import' },
+  const sessionDeliverySteps = {
+    1: { key: 'open-chatgpt' },
+    2: { key: 'submit-signup-email' },
+    3: { key: 'fill-password' },
+    4: { key: 'fetch-signup-code' },
+    5: { key: 'fill-profile' },
+    6: { key: 'wait-registration-success' },
+    7: { key: 'sub2api-session-import' },
   };
   const harness = createHarness({
-    startStep: 10,
-    failureStep: 10,
+    startStep: 7,
+    failureStep: 7,
     failureBudget: 1,
-    failureMessage: '步骤 10：当前页面未读取到有效的 ChatGPT session。',
-    stepDefinitions: plusSessionSteps,
-    finalOAuthChainStartStep: 10,
+    failureMessage: '步骤 7：当前页面未读取到有效的 ChatGPT session。',
+    stepDefinitions: sessionDeliverySteps,
+    finalOAuthChainStartStep: 7,
     customState: {
       stepStatuses: {
+        1: 'completed',
+        2: 'completed',
         3: 'completed',
+        4: 'completed',
+        5: 'completed',
         6: 'completed',
-        7: 'completed',
-        8: 'completed',
-        9: 'completed',
       },
-      plusModeEnabled: true,
+      plusModeEnabled: false,
       plusPaymentMethod: 'paypal',
-      panelMode: 'sub2api',
-      plusAccountAccessStrategy: 'sub2api_codex_session',
+      targetId: 'sub2api',
+      accountDeliveryMode: 'session',
+      accountDeliveryRouteId: 'sub2api-session',
     },
   });
 
@@ -846,7 +850,7 @@ test('auto-run does not reroute SUB2API session import failures into OAuth resta
 
   assert.ok(result?.error);
   assert.match(result.error.message, /未读取到有效的 ChatGPT session/);
-  assert.deepStrictEqual(result.events.steps, [10]);
+  assert.deepStrictEqual(result.events.steps, [7]);
   assert.equal(result.events.invalidations.length, 0);
   assert.ok(!result.events.logs.some(({ message }) => /回到节点 oauth-login|回到节点 confirm-oauth|重新开始授权流程/.test(message)));
 });

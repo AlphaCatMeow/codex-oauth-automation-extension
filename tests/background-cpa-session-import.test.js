@@ -13,6 +13,7 @@ test('CPA session import delegates session acquisition to the shared reader', as
   const logs = [];
   const importedPayloads = [];
   const readerCalls = [];
+  const stepResolutionCalls = [];
 
   const executor = moduleApi.createCpaSessionImportExecutor({
     addLog: async (message, level = 'info', options = {}) => {
@@ -45,21 +46,25 @@ test('CPA session import delegates session acquisition to the shared reader', as
         };
       },
     }),
+    getStepIdByKeyForState: (stepKey, state) => {
+      stepResolutionCalls.push({ stepKey, state });
+      return 7;
+    },
     throwIfStopped: () => {},
   });
 
   const state = {
     nodeId: 'cpa-session-import',
-    visibleStep: 10,
     vpsUrl: 'https://cpa.example.com/management.html#/oauth',
     vpsPassword: 'management-key',
   };
   await executor.executeCpaSessionImport(state);
 
+  assert.deepEqual(stepResolutionCalls, [{ stepKey: 'cpa-session-import', state }]);
   assert.deepEqual(readerCalls, [{
     state,
     options: {
-      visibleStep: 10,
+      visibleStep: 7,
       targetLabel: 'CPA',
       requiredFields: ['session'],
     },

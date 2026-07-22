@@ -10,17 +10,32 @@ function createRouterWithFinalNode(options = {}) {
   const finalNodeId = String(options.finalNodeId || 'platform-verify').trim();
   const nodeIds = Array.isArray(options.nodeIds) ? options.nodeIds.slice() : [
     'open-chatgpt',
+    'submit-signup-email',
+    'fill-password',
+    'fetch-signup-code',
+    'fill-profile',
+    'wait-registration-success',
     'oauth-login',
     'fetch-login-code',
+    'post-login-phone-verification',
     'confirm-oauth',
     finalNodeId,
   ];
   const nodeStepMap = {
-    'oauth-login': 10,
-    'fetch-login-code': 11,
-    'confirm-oauth': 12,
-    'platform-verify': 13,
-    'sub2api-session-import': 10,
+    'open-chatgpt': 1,
+    'submit-signup-email': 2,
+    'fill-password': 3,
+    'fetch-signup-code': 4,
+    'fill-profile': 5,
+    'wait-registration-success': 6,
+    'oauth-login': 7,
+    'fetch-login-code': 8,
+    'post-login-phone-verification': 9,
+    'confirm-oauth': 10,
+    'platform-verify': 11,
+    'cpa-session-import': 7,
+    'sub2api-session-import': 7,
+    'sub2api-agent-identity-import': 7,
     ...(options.nodeStepMap || {}),
   };
   const appendCalls = [];
@@ -59,15 +74,23 @@ function createRouterWithFinalNode(options = {}) {
     getCurrentLuckmailPurchase: () => null,
     getPendingAutoRunTimerPlan: () => null,
     getSourceLabel: () => '',
-    getState: async () => ({ plusModeEnabled: true, nodeStatuses: { [finalNodeId]: 'pending' } }),
+    getState: async () => ({
+      activeFlowId: 'openai',
+      targetId: options.targetId || 'cpa',
+      accountDeliveryMode: options.accountDeliveryMode || 'oauth',
+      accountDeliveryRouteId: options.accountDeliveryRouteId || 'oauth',
+      plusModeEnabled: false,
+      plusPaymentMethod: 'paypal',
+      nodeStatuses: { [finalNodeId]: 'pending' },
+    }),
     getNodeIdsForState: () => nodeIds.slice(),
     getStepIdByNodeIdForState: (nodeId) => nodeStepMap[nodeId] || 0,
-    getLastStepIdForState: () => Math.max(...Object.values(nodeStepMap)),
+    getLastStepIdForState: () => Math.max(...nodeIds.map((nodeId) => nodeStepMap[nodeId] || 0)),
     getStepDefinitionForState: (step) => ({
       id: step,
-      key: Object.entries(nodeStepMap).find(([, mappedStep]) => mappedStep === step)?.[0] || finalNodeId,
+      key: nodeIds.find((nodeId) => nodeStepMap[nodeId] === step) || finalNodeId,
     }),
-    getStepIdsForState: () => Object.values(nodeStepMap),
+    getStepIdsForState: () => nodeIds.map((nodeId) => nodeStepMap[nodeId] || 0),
     getTabId: async () => null,
     getStopRequested: () => false,
     handleAutoRunLoopUnhandledError: async () => {},
@@ -123,16 +146,9 @@ function createRouterWithFinalNode(options = {}) {
   };
 }
 
-test('message router appends success record on Plus final step instead of hard-coded step 10', async () => {
+test('message router appends success record on the resolved OAuth workflow final node', async () => {
   const { appendCalls, router } = createRouterWithFinalNode({
     finalNodeId: 'platform-verify',
-    nodeIds: ['open-chatgpt', 'oauth-login', 'fetch-login-code', 'confirm-oauth', 'platform-verify'],
-    nodeStepMap: {
-      'oauth-login': 10,
-      'fetch-login-code': 11,
-      'confirm-oauth': 12,
-      'platform-verify': 13,
-    },
   });
 
   await router.handleMessage({ type: 'NODE_COMPLETE', nodeId: 'platform-verify', payload: { nodeId: 'platform-verify' } }, {});
@@ -141,24 +157,21 @@ test('message router appends success record on Plus final step instead of hard-c
   assert.equal(appendCalls[0][0], 'success');
 });
 
-test('message router appends success record when SUB2API session import is the final Plus node', async () => {
+test('message router appends success record when SUB2API Session delivery is the final node', async () => {
   const { appendCalls, router } = createRouterWithFinalNode({
     finalNodeId: 'sub2api-session-import',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'session',
+    accountDeliveryRouteId: 'sub2api-session',
     nodeIds: [
       'open-chatgpt',
-      'plus-checkout-create',
-      'plus-checkout-billing',
-      'paypal-approve',
-      'plus-checkout-return',
+      'submit-signup-email',
+      'fill-password',
+      'fetch-signup-code',
+      'fill-profile',
+      'wait-registration-success',
       'sub2api-session-import',
     ],
-    nodeStepMap: {
-      'plus-checkout-create': 6,
-      'plus-checkout-billing': 7,
-      'paypal-approve': 8,
-      'plus-checkout-return': 9,
-      'sub2api-session-import': 10,
-    },
   });
 
   await router.handleMessage({
@@ -171,30 +184,54 @@ test('message router appends success record when SUB2API session import is the f
   assert.equal(appendCalls[0][0], 'success');
 });
 
-test('message router appends success record when CPA session import is the final Plus node', async () => {
+test('message router appends success record when CPA Session delivery is the final node', async () => {
   const { appendCalls, router } = createRouterWithFinalNode({
     finalNodeId: 'cpa-session-import',
+    targetId: 'cpa',
+    accountDeliveryMode: 'session',
+    accountDeliveryRouteId: 'cpa-session',
     nodeIds: [
       'open-chatgpt',
-      'plus-checkout-create',
-      'plus-checkout-billing',
-      'paypal-approve',
-      'plus-checkout-return',
+      'submit-signup-email',
+      'fill-password',
+      'fetch-signup-code',
+      'fill-profile',
+      'wait-registration-success',
       'cpa-session-import',
     ],
-    nodeStepMap: {
-      'plus-checkout-create': 6,
-      'plus-checkout-billing': 7,
-      'paypal-approve': 8,
-      'plus-checkout-return': 9,
-      'cpa-session-import': 10,
-    },
   });
 
   await router.handleMessage({
     type: 'NODE_COMPLETE',
     nodeId: 'cpa-session-import',
     payload: { nodeId: 'cpa-session-import' },
+  }, {});
+
+  assert.equal(appendCalls.length, 1);
+  assert.equal(appendCalls[0][0], 'success');
+});
+
+test('message router appends success record when Agent Identity delivery is the final node', async () => {
+  const { appendCalls, router } = createRouterWithFinalNode({
+    finalNodeId: 'sub2api-agent-identity-import',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'agent_identity',
+    accountDeliveryRouteId: 'sub2api-agent-identity',
+    nodeIds: [
+      'open-chatgpt',
+      'submit-signup-email',
+      'fill-password',
+      'fetch-signup-code',
+      'fill-profile',
+      'wait-registration-success',
+      'sub2api-agent-identity-import',
+    ],
+  });
+
+  await router.handleMessage({
+    type: 'NODE_COMPLETE',
+    nodeId: 'sub2api-agent-identity-import',
+    payload: { nodeId: 'sub2api-agent-identity-import' },
   }, {});
 
   assert.equal(appendCalls.length, 1);

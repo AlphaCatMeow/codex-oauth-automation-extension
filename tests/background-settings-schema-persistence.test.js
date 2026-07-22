@@ -488,7 +488,16 @@ test('buildPersistentSettingsPayload accepts schema-only input when requireKnown
   assert.equal(payload.settingsSchemaVersion, 6);
   assert.equal(payload.settingsState.ui.language, 'en-US');
   assert.equal(payload.settingsState.flows.openai.targets.cpa.accountDeliveryMode, 'oauth');
-  assert.equal(Object.hasOwn(payload.settingsState.flows.openai.plus, 'plusAccountAccessStrategy'), false);
+  assert.deepEqual(
+    Object.keys(payload.settingsState.flows.openai.plus).sort(),
+    [
+      'hostedCheckoutPhoneNumber',
+      'hostedCheckoutVerificationUrl',
+      'plusHostedCheckoutOauthDelaySeconds',
+      'plusModeEnabled',
+      'plusPaymentMethod',
+    ].sort()
+  );
 });
 
 test('getPersistedSettings reads schema keys alongside legacy flat settings keys', async () => {
@@ -513,7 +522,6 @@ function getRequestedKeys() {
 
   assert.ok(api.getRequestedKeys().includes('settingsSchemaVersion'));
   assert.ok(api.getRequestedKeys().includes('settingsState'));
-  assert.ok(api.getRequestedKeys().includes('plusAccountAccessStrategy'));
   assert.equal(state.settingsSchemaVersion, 6);
   assert.equal(state.settingsState.activeFlowId, 'openai');
   assert.ok(api.getRequestedKeys().includes('madaoBaseUrl'));
@@ -577,6 +585,7 @@ const chrome = {
                     sub2apiGroupNames: ['codex', 'openai-plus'],
                     sub2apiAccountPriority: 1,
                     sub2apiDefaultProxyName: '',
+                    accountDeliveryMode: 'session',
                   },
                   codex2api: {
                     codex2apiUrl: '',
@@ -591,7 +600,6 @@ const chrome = {
                 plus: {
                   plusModeEnabled: false,
                   plusPaymentMethod: 'paypal',
-                  plusAccountAccessStrategy: 'sub2api_codex_session',
                 },
                 autoRun: {
                   stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },
@@ -632,7 +640,6 @@ const chrome = {
     state.settingsState.flows.openai.targets.sub2api.accountDeliveryMode,
     'session'
   );
-  assert.equal(Object.hasOwn(state, 'plusAccountAccessStrategy'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(state, 'kiroRegion'), false);
   assert.deepEqual(state.stepExecutionRangeByFlow.kiro, {
     enabled: true,
@@ -741,7 +748,6 @@ function getRemovedKeys() {
     persisted.settingsState.flows.openai.targets.sub2api.accountDeliveryMode,
     'session'
   );
-  assert.equal(Object.hasOwn(persisted, 'plusAccountAccessStrategy'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'kiroRegion'), false);
   assert.equal(persisted.settingsSchemaVersion, 6);
   assert.equal(Object.prototype.hasOwnProperty.call(write, 'activeFlowId'), false);
@@ -751,7 +757,6 @@ function getRemovedKeys() {
   assert.equal(write.settingsSchemaVersion, 6);
   assert.equal(write.settingsState.activeFlowId, 'kiro');
   assert.equal(write.settingsState.flows.openai.targets.sub2api.accountDeliveryMode, 'session');
-  assert.equal(Object.hasOwn(write.settingsState.flows.openai.plus, 'plusAccountAccessStrategy'), false);
   assert.equal(write.settingsState.flows.kiro.selectedTargetId, 'kiro-rs');
   assert.ok(api.getRemovedKeys().includes('kiroRsUrl'));
 });
@@ -994,7 +999,6 @@ const chrome = {
                 plus: {
                   plusModeEnabled: false,
                   plusPaymentMethod: 'paypal',
-                  plusAccountAccessStrategy: 'oauth',
                 },
                 autoRun: {
                   stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },

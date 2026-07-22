@@ -200,7 +200,6 @@ const self = {
                   plus: {
                     plusModeEnabled: false,
                     plusPaymentMethod: 'paypal',
-                    plusAccountAccessStrategy: 'oauth',
                   },
                   autoRun: {
                     stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },
@@ -338,7 +337,6 @@ const self = {
                   plus: {
                     plusModeEnabled: false,
                     plusPaymentMethod: 'paypal',
-                    plusAccountAccessStrategy: 'oauth',
                   },
                   autoRun: {
                     stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },

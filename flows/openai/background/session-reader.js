@@ -157,12 +157,28 @@
       chrome,
       ensureContentScriptReadyOnTabUntilStopped,
       getTabId,
+      getStepIdByKeyForState = null,
       isTabAlive,
       registerTab,
       sendTabMessageUntilStopped,
       sleepWithStop = async () => {},
       waitForTabCompleteUntilStopped = async () => {},
     } = deps;
+
+    function resolveVisibleStep(state = {}, options = {}) {
+      const visibleStep = Math.floor(Number(options?.visibleStep ?? state?.visibleStep) || 0);
+      if (visibleStep > 0) {
+        return visibleStep;
+      }
+      const stepKey = normalizeString(options?.stepKey || state?.nodeId);
+      const resolvedStep = typeof getStepIdByKeyForState === 'function'
+        ? Math.floor(Number(getStepIdByKeyForState(stepKey, state)) || 0)
+        : 0;
+      if (resolvedStep > 0) {
+        return resolvedStep;
+      }
+      throw new Error(`无法解析 ${stepKey || 'OpenAI Session 读取节点'} 的当前步骤，请检查 workflow 装配。`);
+    }
 
     async function readSupportedSessionTab(tabId, automationWindowId = 0) {
       const numericTabId = Number(tabId) || 0;
@@ -273,7 +289,7 @@
 
     async function readCurrentSessionFromState(state = {}, options = {}) {
       const requiredFields = normalizeRequiredFields(options.requiredFields);
-      const visibleStep = Math.max(1, Math.floor(Number(options?.visibleStep ?? state?.visibleStep) || 0) || 10);
+      const visibleStep = resolveVisibleStep(state, options);
       const targetLabel = normalizeString(options.targetLabel);
       const automationWindowId = normalizeAutomationWindowId(state);
       const tabId = await resolveSessionTabId(state);

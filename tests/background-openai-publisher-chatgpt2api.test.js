@@ -114,6 +114,7 @@ test('OpenAI ChatGPT2API executor reads latest state and writes upload status wi
   const broadcasts = [];
   const completed = [];
   const sessionReadCalls = [];
+  const stepResolutionCalls = [];
   let liveState = {
     openaiChatgpt2ApiUrl: '',
     openaiChatgpt2ApiAdminKey: '',
@@ -155,25 +156,33 @@ test('OpenAI ChatGPT2API executor reads latest state and writes upload status wi
       });
       return createJsonResponse({ added: 1, skipped: 0, refreshed: 1, errors: [] });
     },
+    getStepIdByKeyForState: (stepKey, state) => {
+      stepResolutionCalls.push({ stepKey, state });
+      return 7;
+    },
     getState: async () => ({ ...liveState }),
     setState: async (updates = {}) => {
       liveState = { ...liveState, ...updates };
     },
   });
 
-  await publisher.executeOpenAiUploadSessionToChatgpt2Api({
+  const executionState = {
     nodeId: 'openai-upload-session-to-chatgpt2api',
-    visibleStep: 12,
     openaiChatgpt2ApiAdminKey: 'stale-key',
-  });
+  };
+  await publisher.executeOpenAiUploadSessionToChatgpt2Api(executionState);
 
+  assert.deepEqual(stepResolutionCalls, [{
+    stepKey: 'openai-upload-session-to-chatgpt2api',
+    state: executionState,
+  }]);
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, 'https://remote.example.com/api/accounts');
   assert.equal(requests[0].authorization, 'Bearer live-admin-key');
   assert.deepEqual(requests[0].body, { tokens: ['live-session-token'] });
   assert.equal(sessionReadCalls.length, 1);
   assert.deepEqual(sessionReadCalls[0].options, {
-    visibleStep: 12,
+    visibleStep: 7,
     targetLabel: 'ChatGPT2API',
     requiredFields: ['accessToken'],
   });
@@ -226,7 +235,10 @@ test('OpenAI ChatGPT2API executor persists failure state without completing or l
   });
 
   await assert.rejects(
-    () => publisher.executeOpenAiUploadSessionToChatgpt2Api({ nodeId: 'openai-upload-session-to-chatgpt2api' }),
+    () => publisher.executeOpenAiUploadSessionToChatgpt2Api({
+      nodeId: 'openai-upload-session-to-chatgpt2api',
+      visibleStep: 7,
+    }),
     /ChatGPT2API 会话上传失败：invalid admin key/
   );
 

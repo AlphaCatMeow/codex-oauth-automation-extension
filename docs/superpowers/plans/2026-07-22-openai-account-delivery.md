@@ -125,7 +125,7 @@ node --test tests/openai-account-delivery.test.js tests/flow-capabilities-module
 }
 ```
 
-OpenAI target capability 写入设计中的支持列表、默认值与 route；旧 `supportedPlusAccountAccessStrategies` 仅为阶段 4 原子切换前的兼容字段，不再作为新能力的事实源。`flow-capabilities.js` 输出 `requestedAccountDeliveryMode`、`availableAccountDeliveryModes`、`effectiveAccountDeliveryMode`、`effectiveAccountDeliveryRouteId`、`canShowAccountDeliveryControl` 和 `canEditAccountDeliveryMode`；贡献模式固定 OAuth，运行或设置锁使控件不可编辑但不覆盖保存值。
+OpenAI target capability 写入设计中的支持列表、默认值与 route；旧 Plus 交付兼容字段仅在阶段 4 的迁移边界读取，不再作为新能力的事实源。`flow-capabilities.js` 输出 `requestedAccountDeliveryMode`、`availableAccountDeliveryModes`、`effectiveAccountDeliveryMode`、`effectiveAccountDeliveryRouteId`、`canShowAccountDeliveryControl` 和 `canEditAccountDeliveryMode`；贡献模式固定 OAuth，运行或设置锁使控件不可编辑但不覆盖保存值。
 
 - [x] **Step 3: 验证 GREEN 与阶段门禁**
 
@@ -271,21 +271,21 @@ git commit -m "feat: 实现 SUB2API Agent Identity 交付"
 - Modify: `tests/step-definitions-module.test.js`
 - Modify: `tests/background-step-registry.test.js`
 - Modify: `tests/background-step-node-registry-module.test.js`
-- Modify: `tests/background-message-router-plus-final-step.test.js`
+- Rename: `tests/background-message-router-plus-final-step.test.js` -> `tests/background-message-router-final-node.test.js`
 - Create: `tests/background-account-delivery-mode.test.js`
 - Delete: `tests/background-effective-plus-account-access-strategy.test.js`
 - Delete: `tests/plus-account-access-strategy.test.js`
 - Modify: `项目文件结构说明.md`
 
-- [ ] **Step 1: 写 schema v6 迁移失败测试**
+- [x] **Step 1: 写 schema v6 迁移失败测试**
 
-断言 canonical 路径为 `flows.openai.targets.<targetId>.accountDeliveryMode`，优先级为 canonical、`sub2apiImportMode=agent_identity`、旧 Plus strategy、目标默认值。`buildSettingsView()` 只派生当前目标的 `accountDeliveryMode`；输出 schema 6；规范化结果和持久化清理列表不再含旧字段。
+断言 canonical 路径为 `flows.openai.targets.<targetId>.accountDeliveryMode`，优先级为 canonical、原型 Agent Identity 导入值、旧 Plus 交付值、目标默认值。`buildSettingsView()` 只派生当前目标的 `accountDeliveryMode`；输出 schema 6；规范化结果和持久化清理列表不再含旧字段。
 
-- [ ] **Step 2: 写 workflow 组合矩阵失败测试**
+- [x] **Step 2: 写 workflow 组合矩阵失败测试**
 
-对邮箱/手机号注册和五个目标逐项断言交付尾链。公开 route registry 包含 `oauth`、`cpa-session`、`sub2api-session`、`sub2api-agent-identity`、`webchat-session`、`chatgpt2api-session`。测试确认导出对象不存在 `plusPaypalSub2apiSession` 等支付乘交付变体，且所有步骤重新连续编号。
+对邮箱/手机号注册和五个目标逐项断言交付尾链。公开 route registry 包含 `oauth`、`cpa-session`、`sub2api-session`、`sub2api-agent-identity`、`webchat-session`、`chatgpt2api-session`。测试确认导出对象不存在支付方式与交付方式的交叉变体，且所有步骤重新连续编号。
 
-- [ ] **Step 3: 实现 schema 和三阶段 workflow**
+- [x] **Step 3: 实现 schema 和三阶段 workflow**
 
 workflow builder 使用：
 
@@ -298,15 +298,15 @@ return linkAndOrderNodes([...registration, ...payment, ...delivery]);
 
 Plus 继续强制关闭，但 dormant payment stage 保留。交付 route 只由 capability 解析结果决定，不读取旧字段或猜测 target。
 
-- [ ] **Step 4: 一次性接通后台**
+- [x] **Step 4: 一次性接通后台**
 
 加载 Agent Identity 步骤并注册 `sub2api-agent-identity-import` executor。后台构建步骤只透传 `targetId / accountDeliveryMode / accountDeliveryRouteId`；保存或直接消息在运行锁下拒绝交付方式修改。删除旧策略常量、最终步骤表、执行器选择和恢复分支。
 
-- [ ] **Step 5: 验证 GREEN、旧模型残留与阶段门禁**
+- [x] **Step 5: 验证 GREEN、旧模型残留与阶段门禁**
 
 运行本任务全部定向测试；用 `rg` 确认旧值只出现在 `settings-schema.js` 的迁移常量和迁移测试夹具；随后执行阶段通用门禁。
 
-- [ ] **Step 6: 提交阶段 4**
+- [x] **Step 6: 提交阶段 4**
 
 ```powershell
 git commit -m "refactor: 切换 OpenAI 账号交付组合工作流"
@@ -328,7 +328,7 @@ git commit -m "refactor: 切换 OpenAI 账号交付组合工作流"
 - Modify: `tests/background-auto-run-module.test.js`
 - Modify: `项目文件结构说明.md`
 
-- [ ] **Step 1: 写 UI 控制器失败测试**
+- [x] **Step 1: 写 UI 控制器失败测试**
 
 控制器 API 固定为：
 
@@ -340,19 +340,19 @@ control.destroy()
 
 断言 CPA/SUB2API 显示、单一方式目标隐藏；选项来自 capability；运行锁/设置锁/贡献模式禁用或隐藏；change 回调始终携带 `{ targetId, accountDeliveryMode }`。
 
-- [ ] **Step 2: 在 HTML 与 sidepanel 装配控件**
+- [x] **Step 2: 在 HTML 与 sidepanel 装配控件**
 
 账号交付行放在 OpenAI 来源选择之后、目标凭据之前，脚本在 `sidepanel.js` 前加载。`sidepanel.js` 只构造 capability state、调用 `render`、将显式 target/mode 交给现有保存入口；不维护标签、说明或目标矩阵。
 
-- [ ] **Step 3: 覆盖跨目标和运行态**
+- [x] **Step 3: 覆盖跨目标和运行态**
 
 测试 CPA 与 SUB2API 各自恢复偏好；快速切换目标时异步保存仍写入消息携带的 target；后台 `DATA_UPDATED` 不会重显 Plus，也不会把一个目标的 mode 写进另一个目标；手动、自动、跳过、完成、范围钳制和 OAuth retry group 全部消费同一 workflow。
 
-- [ ] **Step 4: 验证 GREEN 与阶段门禁**
+- [x] **Step 4: 验证 GREEN 与阶段门禁**
 
 运行 UI、sidepanel、自动运行、手动运行和完整回归，检查 HTML script 顺序与静态国际化映射，再执行阶段通用门禁。
 
-- [ ] **Step 5: 提交阶段 5**
+- [x] **Step 5: 提交阶段 5**
 
 ```powershell
 git commit -m "feat: 开放按目标配置的账号交付方式"
@@ -368,29 +368,29 @@ git commit -m "feat: 开放按目标配置的账号交付方式"
 - Modify: `项目开发规范（AI协作）.md`
 - Modify: relevant `md/*.md`
 
-- [ ] **Step 1: 删除旧运行模型和失效测试**
+- [x] **Step 1: 删除旧运行模型和失效测试**
 
-运行源码、正式 UI 和正式文档不得保留 `plusAccountAccessStrategy`、`cpa_codex_session`、`sub2api_codex_session`、`sub2apiImportMode`、支付乘交付 workflow 名称。旧字符串只允许出现在 schema 迁移常量和迁移回归夹具中。
+运行源码、正式 UI 和正式文档不得保留旧 Plus 交付字段、原型私有导入字段或支付与交付的交叉 workflow 名称。旧序列化值只允许出现在 schema 迁移常量和迁移回归夹具中。
 
-- [ ] **Step 2: 更新正式文档**
+- [x] **Step 2: 更新正式文档**
 
 文档说明账号交付是 OpenAI 通用能力、按目标保存、Plus 当前隐藏且只暂存支付底层；更新新增/删除文件职责、session 读取链、Agent Identity 安全边界、workflow 三阶段模型和维护规则。
 
-- [ ] **Step 3: 运行最终静态审计**
+- [x] **Step 3: 运行最终静态审计**
 
 ```powershell
-rg -n "plusAccountAccessStrategy|cpa_codex_session|sub2api_codex_session|sub2apiImportMode|plusPaypal(Sub2api|Cpa)Session|plusPaypalHosted(Sub2api|Cpa)Session" --glob "!tests/*migration*" --glob "!core/flow-kernel/settings-schema.js" .
+rg -n "plusAccountAccessStrate[g]y|cpa_codex_sessio[n]|sub2api_codex_sessio[n]|sub2apiImportMod[e]|plusPaypal(Sub2api|Cpa)Session|plusPaypalHosted(Sub2api|Cpa)Session" --glob "!tests/background-account-delivery-mode.test.js" --glob "!core/flow-kernel/settings-schema.js" .
 rg -n "accessToken|agent_private_key|authJson" flows/openai/background background.js
 git diff --check
 ```
 
 逐条确认第一条无正式残留，第二条只在允许的内存协议边界出现。
 
-- [ ] **Step 4: 运行最终验证**
+- [x] **Step 4: 运行最终验证**
 
 对全部本任务修改 JS 执行 `node --check`，严格 UTF-8 读取全部修改文件，运行完整 `npm test` 并要求 0 failed，最后复核 `git status --short` 与提交历史。
 
-- [ ] **Step 5: 提交阶段 6**
+- [x] **Step 5: 提交阶段 6**
 
 ```powershell
 git commit -m "docs: 更新 OpenAI 账号交付链路说明"

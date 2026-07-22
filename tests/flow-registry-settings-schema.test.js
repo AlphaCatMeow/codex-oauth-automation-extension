@@ -182,7 +182,16 @@ test('settings schema normalizes view input into canonical nested namespaces', (
   assert.equal(normalized.services.account.customPassword, 'SharedSecret123!');
   assert.equal(normalized.flows.openai.selectedTargetId, 'cpa');
   assert.equal(normalized.flows.openai.targets.cpa.accountDeliveryMode, 'oauth');
-  assert.equal(Object.hasOwn(normalized.flows.openai.plus, 'plusAccountAccessStrategy'), false);
+  assert.deepEqual(
+    Object.keys(normalized.flows.openai.plus).sort(),
+    [
+      'hostedCheckoutPhoneNumber',
+      'hostedCheckoutVerificationUrl',
+      'plusHostedCheckoutOauthDelaySeconds',
+      'plusModeEnabled',
+      'plusPaymentMethod',
+    ].sort()
+  );
   assert.equal(normalized.flows.openai.targets.webchat.baseUrl, 'https://webchat.example.com/admin');
   assert.equal(normalized.flows.openai.targets.webchat.apiKey, 'webchat-key');
   assert.equal(normalized.flows.openai.targets.chatgpt2api.baseUrl, 'https://chatgpt2api.example.com/admin');
@@ -477,7 +486,6 @@ test('settings schema can project canonical state into a read view without legac
   assert.equal(view.openaiChatgpt2ApiUrl, 'https://chatgpt2api.example.com/admin');
   assert.equal(view.openaiChatgpt2ApiAdminKey, 'key-chatgpt2api');
   assert.equal(view.accountDeliveryMode, 'oauth');
-  assert.equal(Object.hasOwn(view, 'plusAccountAccessStrategy'), false);
   assert.equal(view.settingsSchemaVersion, 6);
   assert.equal(view.settingsState.activeFlowId, 'kiro');
   assert.deepEqual(view.stepExecutionRangeByFlow.grok, {
@@ -485,20 +493,6 @@ test('settings schema can project canonical state into a read view without legac
     fromStep: 1,
     toStep: 6,
   });
-});
-
-test('settings schema migrates the legacy CPA session strategy into canonical account delivery state', () => {
-  const { settingsSchema } = loadApis();
-  const schema = settingsSchema.createSettingsSchema();
-  const normalized = schema.normalizeSettingsState({
-    plusAccountAccessStrategy: 'cpa_codex_session',
-  });
-  const view = schema.buildSettingsView(normalized);
-
-  assert.equal(normalized.flows.openai.targets.cpa.accountDeliveryMode, 'session');
-  assert.equal(view.accountDeliveryMode, 'session');
-  assert.equal(Object.hasOwn(normalized.flows.openai.plus, 'plusAccountAccessStrategy'), false);
-  assert.equal(Object.hasOwn(view, 'plusAccountAccessStrategy'), false);
 });
 
 test('settings schema preserves registered custom flow settings without openai/kiro hardcoding', () => {

@@ -32,6 +32,7 @@ test('SUB2API Agent Identity step preflights before reading and registering, the
   const importCalls = [];
   const completed = [];
   const logs = [];
+  const stepResolutionCalls = [];
   const authJson = createAuthJson();
   const prepared = {
     origin: 'https://sub.example',
@@ -82,13 +83,16 @@ test('SUB2API Agent Identity step preflights before reading and registering, the
         };
       },
     }),
+    getStepIdByKeyForState: (stepKey, state) => {
+      stepResolutionCalls.push({ stepKey, state });
+      return 7;
+    },
     sleepWithStop: async () => {},
     throwIfStopped: () => {},
   });
 
   const state = {
     nodeId: 'sub2api-agent-identity-import',
-    visibleStep: 10,
     sub2apiUrl: 'https://sub.example/admin/accounts',
     sub2apiEmail: 'admin@example.com',
     sub2apiPassword: 'secret',
@@ -97,10 +101,11 @@ test('SUB2API Agent Identity step preflights before reading and registering, the
   await executor.executeSub2ApiAgentIdentityImport(state);
 
   assert.deepEqual(events, ['preflight', 'read-session', 'register-agent', 'import', 'complete']);
+  assert.deepEqual(stepResolutionCalls, [{ stepKey: 'sub2api-agent-identity-import', state }]);
   assert.deepEqual(readerCalls, [{
     state,
     options: {
-      visibleStep: 10,
+      visibleStep: 7,
       targetLabel: 'SUB2API Agent Identity',
       requiredFields: ['accessToken'],
     },

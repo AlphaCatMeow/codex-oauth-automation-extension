@@ -157,6 +157,7 @@
       broadcastDataUpdate = null,
       completeNodeFromBackground,
       fetchImpl = typeof fetch === 'function' ? fetch.bind(globalThis) : null,
+      getStepIdByKeyForState = null,
       getState = async () => ({}),
       setState = async () => {},
     } = deps;
@@ -201,9 +202,23 @@
       return updates;
     }
 
+    function resolveVisibleStep(state = {}, stepKey = '') {
+      const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
+      if (visibleStep > 0) {
+        return visibleStep;
+      }
+      const resolvedStep = typeof getStepIdByKeyForState === 'function'
+        ? Math.floor(Number(getStepIdByKeyForState(stepKey, state)) || 0)
+        : 0;
+      if (resolvedStep > 0) {
+        return resolvedStep;
+      }
+      throw new Error(`无法解析 ${stepKey || 'OpenAI ChatGPT2API 交付节点'} 的当前步骤，请检查 workflow 装配。`);
+    }
+
     async function executeOpenAiUploadSessionToChatgpt2Api(state = {}) {
       const nodeId = cleanString(state?.nodeId) || 'openai-upload-session-to-chatgpt2api';
-      const visibleStep = Math.max(1, Math.floor(Number(state?.visibleStep) || 0) || 10);
+      const visibleStep = resolveVisibleStep(state, nodeId);
       const currentState = await getState();
       let failureTargetUrl = '';
       try {

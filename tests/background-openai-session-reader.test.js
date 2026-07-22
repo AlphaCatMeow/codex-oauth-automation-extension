@@ -53,6 +53,7 @@ function createReaderHarness(api, options = {}) {
       getTabIdCalls.push(source);
       return options.registeredTabId ?? null;
     },
+    getStepIdByKeyForState: options.getStepIdByKeyForState || (() => 10),
     isTabAlive: async () => options.registeredTabAlive ?? false,
     registerTab: async (source, tabId) => registerCalls.push({ source, tabId }),
     sendTabMessageUntilStopped: async (tabId, source, message) => {
@@ -159,6 +160,48 @@ test('OpenAI session reader falls back without a window lock and uses the generi
       source: 'background',
     },
   }]);
+});
+
+test('OpenAI session reader resolves a missing visible step from the current workflow node', async () => {
+  const api = loadSessionReaderApi();
+  const stepResolutionCalls = [];
+  const state = { nodeId: 'cpa-session-import', targetId: 'cpa' };
+  const harness = createReaderHarness(api, {
+    getStepIdByKeyForState: (stepKey, currentState) => {
+      stepResolutionCalls.push({ stepKey, state: currentState });
+      return 7;
+    },
+  });
+
+  await harness.reader.readCurrentSessionFromState(state, {
+    targetLabel: 'CPA',
+    requiredFields: ['session'],
+  });
+
+  assert.deepEqual(stepResolutionCalls, [{ stepKey: 'cpa-session-import', state }]);
+  assert.equal(
+    harness.ensureCalls[0].options.logMessage,
+    '步骤 7：正在等待 ChatGPT 会话页面完成加载，再继续读取当前登录会话...'
+  );
+});
+
+test('background injects dynamic workflow step resolution into every OpenAI session delivery factory', () => {
+  const source = fs.readFileSync('background.js', 'utf8');
+  const factoryMarkers = [
+    'createSub2ApiSessionImportExecutor({',
+    'createSub2ApiAgentIdentityImportExecutor({',
+    'createCpaSessionImportExecutor({',
+    'createOpenAiWebchatPublisher({',
+    'createOpenAiChatgpt2ApiPublisher({',
+  ];
+
+  for (const marker of factoryMarkers) {
+    const start = source.indexOf(marker);
+    assert.notEqual(start, -1, `missing factory wiring: ${marker}`);
+    const end = source.indexOf('\n});', start);
+    assert.notEqual(end, -1, `unterminated factory wiring: ${marker}`);
+    assert.match(source.slice(start, end), /\bgetStepIdByKeyForState\b/, marker);
+  }
 });
 
 test('OpenAI session reader keeps registered and fallback tabs inside the automation window', async () => {

@@ -133,7 +133,7 @@
 
 ### 1.5 步骤 key / nodeId 状态原则
 
-- 后台执行必须优先通过当前 state 解析 node registry：`activeFlowId`、`plusModeEnabled`、`plusPaymentMethod`、`signupMethod`、以及影响步骤列表的开关都必须参与解析。
+- 后台执行必须优先通过当前 state 解析 node registry：`activeFlowId`、`targetId`、`accountDeliveryMode`、`accountDeliveryRouteId`、`signupMethod` 以及影响步骤列表的开关都必须参与解析。`plusModeEnabled / plusPaymentMethod` 只允许作为 dormant payment stage 的底层组合输入，正式读取、导入、保存和启动入口必须先把 Plus 强制关闭。
 - 自动运行、手动跳过、节点完成、节点失败、节点等待器必须优先使用 `nodeId`。
 - 可见步骤号只能作为兼容输入；一旦进入后台，必须尽快解析为当前模式下的 `nodeId`。
 - 如果同一个可见步骤号在不同模式下对应不同节点，必须以当前 workflow 为准，不能用普通模式含义推断。
@@ -150,8 +150,8 @@
 项目现在至少有这些会改变流程或步骤含义的维度：
 
 - `activeFlowId`
-- `plusModeEnabled`
-- `plusPaymentMethod`
+- `targetId / accountDeliveryMode / accountDeliveryRouteId`
+- `plusModeEnabled / plusPaymentMethod`（仅 dormant payment stage；正式运行态固定关闭）
 - `signupMethod`
 - `phoneVerificationEnabled`
 - `phoneSignupReloginAfterBindEmailEnabled`
@@ -177,7 +177,7 @@
 
 - 步骤相关日志必须通过结构化元数据传递步骤号：`addLog(message, level, { step, stepKey })` 或内容脚本 `log(message, level, { step, stepKey })`。
 - sidepanel 只能读取日志条目的 `entry.step` 渲染步骤标签，禁止再用正则从日志正文解析 `步骤 X` / `Step X`。
-- Plus 模式复用普通执行器时，必须先按当前运行态解析可见步骤号，再传给日志、完成信号、错误信号和内容脚本 payload；禁止在复用执行器里写死普通模式步骤号。
+- 账号交付 route 或 dormant payment stage 复用执行器时，必须先按当前 workflow 解析可见步骤号，再传给日志、完成信号、错误信号和内容脚本 payload；禁止在复用执行器里写死 OAuth 默认 route 的步骤号。当前正式运行态不得启用 dormant payment stage。
 - 日志正文可以在业务说明里提到“回到步骤 X”这类操作目标，但不能把正文前缀当作当前日志所属步骤。
 - 不做旧日志文本兼容；如果旧日志没有结构化 `step`，sidepanel 不需要补推断步骤标签。
 
@@ -230,8 +230,8 @@
 补充约定：
 
 - 如果新增来源本身已经提供稳定的后台协议接口，可以直接走协议分支接入：
-  - 步骤 7 通过 `background/panel-bridge.js` 生成 `auth_url`
-  - 步骤 10 通过 `flows/openai/background/steps/platform-verify.js` 直接提交 localhost callback
+  - `oauth-login` 通过 `background/panel-bridge.js` 或目标 API 模块生成 `auth_url`
+  - `platform-verify` 通过 `flows/openai/background/steps/platform-verify.js` 直接提交 localhost callback
 - 这类来源优先复用现有 OpenAI 授权页与 localhost callback 主链，不要为了“看起来统一”再额外新增一套页面 DOM 自动点击内容脚本。
 - 只有当目标来源没有可用协议接口、必须依赖后台页面按钮时，才新增对应的 panel content script。
 
@@ -272,7 +272,7 @@
 当前约定示例：
 
 - `contributionMode` 是 sidepanel 的运行态 UI 模式，不是新的 `panelMode`
-- `panelMode` 当前允许 `cpa | sub2api | codex2api`
+- OpenAI 目标的 canonical 状态是 `targetId`；`panelMode` 只作为兼容视图存在，不能再作为账号交付能力或 route 的事实源
 - 运行态模式不能混进 `PERSISTED_SETTING_DEFAULTS`
 - 运行态模式不能混进配置导入/导出
 - 如果运行态模式会临时覆盖某些持久配置的显示值，必须同时处理好“退出模式后恢复”和“自动保存不能误覆盖原配置”这两个问题
@@ -282,7 +282,7 @@
 
 - 贡献模式属于 `CPA` 来源下的特殊业务模式，不是新的 provider
 - 贡献模式允许扩展内承接公开 OAuth 交互，但只能调用公开接口，不能触碰 `/v0/management/*`
-- 如果产品要求“开始贡献”和主自动流走同一条链路，则优先把贡献服务接入步骤 7 / 10，而不是额外分出一套平行 mini-flow
+- 如果产品要求“开始贡献”和主自动流走同一条链路，则优先把贡献服务接入 `oauth-login / platform-verify`，而不是额外分出一套平行 mini-flow
 - 贡献流程的后台公开 OAuth 状态机应优先收敛到独立模块，例如 `background/contribution-oauth.js`
 - 贡献模式的侧栏按钮、状态展示和轮询调度应优先收敛到独立 manager，例如 `sidepanel/contribution-mode.js`
 - 如果服务端当前返回“无需手动提交 callback”，扩展端必须把它当兼容成功态处理，不能简单按 HTTP 非 200 直接视为失败
@@ -295,23 +295,24 @@
 - iCloud 别名缓存只能作为短暂失败回退，不允许替代线上列表成为最终状态来源；已用和保留状态仍然以 `manualAliasUsage`、`preservedAliases` 与最新线上列表合并后的结果为准。
 - 如果新增 iCloud 相关回退路径，必须补覆盖登录提示、缓存回退、自动运行停止重试和 reserve 异常恢复的测试，并同步更新 [项目完整链路说明.md](./项目完整链路说明.md)。
 
-### 3.4.2 Plus 账号接入策略 / 会话导入规范
+### 3.4.2 OpenAI 账号交付规范
 
-- `plusAccountAccessStrategy` 属于 `flows.openai.plus` 下的持久配置，不是新的运行态模式，也不是新的 source。
-- 当前能力边界由 target capability 决定：`CPA` 允许 `oauth / cpa_codex_session`，`SUB2API` 允许 `oauth / sub2api_codex_session`，`Codex2API` 当前仅允许 `oauth`。
-- UI 上不支持的选项必须直接禁用并回落为 `oauth`；不允许出现“看起来能选，执行时再报不支持”的假开关。
-- Plus 模式下会话导入只在 `openai` flow、Plus 已开启、且当前是邮箱注册时可用；Plus 模式不允许手机号注册。
-- 任何设计、文档和代码都不能把 Plus 写成固定步骤号链；只能描述“替换哪一段 workflow 节点”。
-- 当尾链切到 `cpa-session-import` 或 `sub2api-session-import` 时，被替换的是整段 `oauth-login -> fetch-login-code -> confirm-oauth -> platform-verify`，不是只替换其中某一个固定编号步骤。
-- session import 节点必须直接完成目标平台接入，不得再经过 `platform-verify`，也不得混入普通 OAuth callback 状态机。
+- 账号交付是 OpenAI flow 的通用 target 能力，不属于 Plus、支付方式或某个 source 的私有模式。持久配置只写入 `flows.openai.targets.<targetId>.accountDeliveryMode`，交付 route 由 target capability 解析。
+- 当前能力矩阵由 `flows/openai/index.js` 唯一声明：`CPA` 支持 OAuth / ChatGPT Session，`SUB2API` 支持 OAuth / ChatGPT Session / Agent Identity，`Codex2API` 固定 OAuth，`webchat / ChatGPT2API` 固定 ChatGPT Session。
+- 侧栏只根据 capability 渲染方式、说明、显隐和禁用状态；多方式 target 显示独立账号交付控件，单一方式 target 隐藏控件，不能在 `sidepanel.js` 重复维护 target 矩阵或 route 表。
+- 保存账号交付方式时必须携带显式 `targetId`；运行锁、设置锁和贡献模式不得允许修改已解析方式。贡献模式固定使用 OAuth，但不覆盖用户保存的 target 偏好。
+- workflow 必须按“注册阶段 -> 可选 dormant 支付阶段 -> 账号交付阶段”组合，交付阶段只消费 capability 已解析的 route，不生成支付方式与交付方式的笛卡尔积变体。
+- ChatGPT Session 交付必须复用通用 session reader，并直接完成目标导入，不进入 OAuth callback 或 `platform-verify`；Session 和 Agent Identity 失败不得静默回退到另一种方式。
+- Agent Identity 必须先完成 SUB2API 登录、分组和代理预检，再生成 Ed25519 身份并注册；原始 access token、私钥和完整敏感 `auth.json` 只能在内存协议边界使用，禁止写入设置、运行态、日志或错误文本。
+- Plus 当前固定关闭。PayPal、Hosted 和免支付实现可以作为 dormant payment stage 保留，但任何读取、导入、保存和启动入口都不能重新打开 Plus。
 - 相关改动必须同步检查：
-  - `data/step-definitions.js`
+  - `flows/openai/account-delivery.js` 与 `flows/openai/index.js`
   - `core/flow-kernel/flow-capabilities.js`
   - `core/flow-kernel/settings-schema.js`
-  - `background/message-router.js`
-  - 对应 session import executor 与 `flows/openai/background/steps/platform-verify.js`
-  - `sidepanel/sidepanel.html` 与 `sidepanel/sidepanel.js`
-  - 手动跳过、自动运行、最终完成节点判断、日志 step 映射与测试
+  - `flows/openai/workflow.js` 与 `data/step-definitions.js`
+  - `flows/openai/background/session-reader.js`、Session/Agent Identity executor
+  - `background/message-router.js` 与 `sidepanel/account-delivery-control.js`
+  - 手动执行、自动运行、手动跳过、范围限制、OAuth retry group、最终完成节点判断、日志 step 映射与测试
 
 ### 3.5 OAuth / 接码 / 注册身份链路规范
 
@@ -399,8 +400,8 @@ npm test
 - 如果新增步骤定义，必须覆盖：
   - `getSteps` 与 `getNodes` 两套输出。
   - `getWorkflow` 的 `nodeIds` 顺序。
-  - 普通模式步骤列表。
-  - Plus 模式步骤列表。
+  - 普通注册与所有受影响账号交付 route 的步骤列表。
+  - 如果修改 dormant payment stage，覆盖底层支付组合输入，并额外断言正式配置和启动入口仍无法启用 Plus。
   - 邮箱注册模式步骤列表。
   - 手机号注册模式步骤列表。
   - 新开关打开 / 关闭两种步骤列表。

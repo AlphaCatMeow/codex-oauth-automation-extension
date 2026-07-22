@@ -6,15 +6,15 @@
 
 ## 1. 背景
 
-当前 OpenAI flow 把“账号如何交付到目标系统”错误地挂在 Plus 模式下，配置名为 `plusAccountAccessStrategy`。这导致三个本应独立的概念形成了组合状态：
+升级前 OpenAI flow 把“账号如何交付到目标系统”错误地挂在 Plus 模式下，并使用全局 Plus 专属交付字段。这导致三个本应独立的概念形成了组合状态：
 
 - 注册方式：邮箱或手机号
 - 支付方式：PayPal、Hosted、无需支付
 - 账号交付方式：OAuth 或当前 ChatGPT 会话导入
 
-由此产生了 `plusPaypalSub2apiSession`、`plusPaypalHostedCpaSession` 一类“支付方式 × 交付方式”的 workflow 变体。新增 Agent Identity 后，如果继续沿用这个结构，新的目标、支付方式和交付方式会继续形成笛卡尔积，配置迁移、侧栏显隐、步骤恢复和自动运行都难以维护。
+由此产生了“支付方式 + 目标 + Session”一类交叉命名的 workflow 变体。新增 Agent Identity 后，如果继续沿用这个结构，新的目标、支付方式和交付方式会继续形成笛卡尔积，配置迁移、侧栏显隐、步骤恢复和自动运行都难以维护。
 
-参考项目 `FlowPilot新功能` 已验证 Agent Identity 的核心协议可行，但原型把它实现成 SUB2API 私有字段 `sub2apiImportMode`，并把密钥生成与 OpenAI Agent 注册逻辑放进 `background/sub2api-api.js`。该实现可作为协议样本，不能直接复制到正式项目。
+参考项目 `FlowPilot新功能` 已验证 Agent Identity 的核心协议可行，但原型把它实现成 SUB2API 私有导入字段，并把密钥生成与 OpenAI Agent 注册逻辑放进 `background/sub2api-api.js`。该实现可作为协议样本，不能直接复制到正式项目。
 
 ## 2. 目标与非目标
 
@@ -44,7 +44,7 @@
 
 ## 3. 方案比较
 
-### 3.1 方案 A：沿用 `sub2apiImportMode`
+### 3.1 方案 A：沿用 SUB2API 私有导入字段
 
 只给 SUB2API 增加 `oauth / agent_identity`，并在 workflow 末尾替换节点。
 
@@ -52,7 +52,7 @@
 
 ### 3.2 方案 B：只把旧 Plus 选择器移出 UI
 
-继续保留全局 `plusAccountAccessStrategy`，仅改文案和显隐。
+继续保留全局 Plus 专属交付字段，仅改文案和显隐。
 
 这会把历史耦合从界面移动到配置和后台，无法按目标保存选择，也不能消除 workflow 组合变体。该方案拒绝。
 
@@ -172,26 +172,18 @@ settingsState.flows.openai.targets.<targetId>.accountDeliveryMode
 迁移只在 `core/flow-kernel/settings-schema.js` 的纯迁移函数中完成，优先级如下：
 
 1. 已存在的 canonical `targets.<targetId>.accountDeliveryMode`
-2. 参考原型遗留的 SUB2API `sub2apiImportMode = agent_identity`
-3. 旧 `plusAccountAccessStrategy`
+2. 参考原型遗留的 SUB2API Agent Identity 导入值
+3. 旧 Plus 专属交付值
 4. 当前目标 capability 默认方式
 
-旧值映射：
-
-| 旧值 | 新值 |
-| --- | --- |
-| `sub2api_codex_session` | SUB2API `session` |
-| `cpa_codex_session` | CPA `session` |
-| `oauth` | 各目标默认方式 |
-| `sub2apiImportMode = agent_identity` | SUB2API `agent_identity` |
-| 未知值 | 各目标默认方式 |
+旧值映射由迁移器常量和专用迁移回归夹具共同锁定：旧 SUB2API/CPA 会话值分别映射到对应 target 的 `session`，原型 Agent Identity 值映射到 SUB2API `agent_identity`，OAuth 与未知值按 target capability 默认方式归一。
 
 迁移要求：
 
 - schema 版本从 5 升到 6。
 - 旧字段只能由迁移器读取一次，不能被运行源码继续消费。
-- 写入 canonical `settingsState` 成功后，从平铺 storage 删除 `plusAccountAccessStrategy` 和 `sub2apiImportMode`。
-- 重写 `settingsState` 时移除 `flows.openai.plus.plusAccountAccessStrategy` 及目标内的 `sub2apiImportMode`。
+- 写入 canonical `settingsState` 成功后，从平铺 storage 删除所有旧 Plus 交付字段和原型私有导入字段。
+- 重写 `settingsState` 时移除 Plus 命名空间和 target 内的全部旧交付字段。
 - 导入配置执行相同迁移；导出只包含 canonical 字段。
 - Plus 配置只保留当前 dormant 支付字段，`plusModeEnabled` 继续强制为 `false`。
 - 旧序列化值只允许出现在迁移器常量和迁移回归测试夹具中。
@@ -217,14 +209,14 @@ registration stage
 
 | route ID | 节点 |
 | --- | --- |
-| `oauth` | `oauth-login -> fetch-login-code -> confirm-oauth -> platform-verify` |
+| `oauth` | `oauth-login -> fetch-login-code -> 按注册方式解析的手机号/绑定邮箱节点 -> confirm-oauth -> platform-verify` |
 | `cpa-session` | `cpa-session-import` |
 | `sub2api-session` | `sub2api-session-import` |
 | `sub2api-agent-identity` | `sub2api-agent-identity-import` |
 | `webchat-session` | `openai-upload-session-to-webchat` |
 | `chatgpt2api-session` | `openai-upload-session-to-chatgpt2api` |
 
-删除 `plusPaypalSub2apiSession`、`plusPaypalCpaSession`、Hosted 对应组合变体以及所有同类交叉命名。支付 route 与交付 route 彼此不知道对方的具体类型。
+删除所有支付方式、目标与 Session 交叉命名的组合变体。支付 route 与交付 route 彼此不知道对方的具体类型。
 
 ### 7.3 状态与恢复
 

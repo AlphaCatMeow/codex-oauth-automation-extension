@@ -427,6 +427,7 @@ test('session import step delegates session acquisition to the shared reader', a
   const sentMessages = [];
   const importedPayloads = [];
   const readerCalls = [];
+  const stepResolutionCalls = [];
 
   const executor = moduleApi.createSub2ApiSessionImportExecutor({
     addLog: async (message, level = 'info', options = {}) => {
@@ -476,6 +477,10 @@ test('session import step delegates session acquisition to the shared reader', a
       ensureCalls.push({ source, tabId, options });
     },
     getTabId: async () => null,
+    getStepIdByKeyForState: (stepKey, state) => {
+      stepResolutionCalls.push({ stepKey, state });
+      return 7;
+    },
     isTabAlive: async () => false,
     normalizeSub2ApiUrl: (value) => value,
     registerTab: async () => {},
@@ -500,7 +505,6 @@ test('session import step delegates session acquisition to the shared reader', a
 
   await executor.executeSub2ApiSessionImport({
     nodeId: 'sub2api-session-import',
-    visibleStep: 10,
     plusCheckoutTabId: 91,
     sub2apiUrl: 'https://sub.example/admin/accounts',
     sub2apiEmail: 'admin@example.com',
@@ -508,18 +512,19 @@ test('session import step delegates session acquisition to the shared reader', a
     sub2apiGroupName: 'codex',
   });
 
+  const state = {
+    nodeId: 'sub2api-session-import',
+    plusCheckoutTabId: 91,
+    sub2apiUrl: 'https://sub.example/admin/accounts',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+    sub2apiGroupName: 'codex',
+  };
+  assert.deepStrictEqual(stepResolutionCalls, [{ stepKey: 'sub2api-session-import', state }]);
   assert.deepStrictEqual(readerCalls, [{
-    state: {
-      nodeId: 'sub2api-session-import',
-      visibleStep: 10,
-      plusCheckoutTabId: 91,
-      sub2apiUrl: 'https://sub.example/admin/accounts',
-      sub2apiEmail: 'admin@example.com',
-      sub2apiPassword: 'secret',
-      sub2apiGroupName: 'codex',
-    },
+    state,
     options: {
-      visibleStep: 10,
+      visibleStep: 7,
       targetLabel: 'SUB2API',
       requiredFields: ['session'],
     },

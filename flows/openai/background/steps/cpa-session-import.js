@@ -5,6 +5,7 @@
     const {
       addLog: rawAddLog = async () => {},
       completeNodeFromBackground,
+      getStepIdByKeyForState = null,
       throwIfStopped = () => {},
     } = deps;
 
@@ -48,7 +49,16 @@
 
     function resolveVisibleStep(state = {}) {
       const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
-      return visibleStep > 0 ? visibleStep : 10;
+      if (visibleStep > 0) {
+        return visibleStep;
+      }
+      const resolvedStep = typeof getStepIdByKeyForState === 'function'
+        ? Math.floor(Number(getStepIdByKeyForState('cpa-session-import', state)) || 0)
+        : 0;
+      if (resolvedStep > 0) {
+        return resolvedStep;
+      }
+      throw new Error('无法解析 CPA Session 交付节点的当前步骤，请检查 workflow 装配。');
     }
 
     async function executeCpaSessionImport(state = {}) {

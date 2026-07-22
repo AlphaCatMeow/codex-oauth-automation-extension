@@ -1,8 +1,8 @@
 # FlowPilot
 
-`FlowPilot` 是一个 Chrome 侧边栏扩展，用来批量处理 ChatGPT / OpenAI 账号注册、授权、Plus 支付和平台接入流程。
+`FlowPilot` 是一个 Chrome 侧边栏扩展，用来批量处理 ChatGPT / OpenAI 账号注册、授权和多目标账号交付流程。
 
-它的定位不是“单个按钮脚本”，而是把注册、验证码、OAuth、Plus 支付、账号导入、自动重试和记录管理放进同一套可持续使用的工具里。
+它的定位不是“单个按钮脚本”，而是把注册、验证码、OAuth、账号交付、自动重试和记录管理放进同一套可持续使用的工具里；Plus 底层流程暂存，但当前不提供用户入口。
 
 ## 插件效果
 
@@ -33,6 +33,7 @@
 - 支持普通注册授权链路，既可以单步执行，也可以整套 `Auto` 执行。
 - 支持 `CPA`、`SUB2API`、`Codex2API` 三种 OpenAI 来源，以及独立的 `Kiro` 和 `Grok` flow。
 - 支持邮箱注册、验证码收取、登录验证码处理、OAuth 同意页确认和平台侧账号创建。
+- OpenAI 来源支持按目标选择账号交付方式：`CPA` 支持 OAuth / ChatGPT Session，`SUB2API` 支持 OAuth / ChatGPT Session / Agent Identity，其他 OpenAI target 使用各自固定交付 route。
 - 支持 `Hotmail`、`2925`、`QQ Mail`、`163 Mail`、`163 VIP Mail`、`126 Mail`、`Inbucket`、`Cloud Mail`、`YYDS Mail`、`iCloud` 等收码方式。
 - 支持 `DuckDuckGo`、`Cloudflare`、`自定义邮箱池`、`自定义邮箱服务号池`、`Gmail / 2925 别名邮箱` 等注册邮箱生成方式。
 - 支持接码平台、手机号验证、自动重试、执行范围限制、IP 代理、贡献模式和账号记录面板。
@@ -41,13 +42,19 @@
 ## 支持的来源
 
 - `CPA`
-  用于普通 OAuth 接入，也支持在 Plus 模式下直接导入当前 ChatGPT 会话到 CPA。
+  支持 OAuth 和 ChatGPT Session 两种账号交付方式。
 
 - `SUB2API`
-  用于普通 OAuth 接入，也支持在 Plus 模式下直接导入当前 ChatGPT 会话到 SUB2API。
+  支持 OAuth、ChatGPT Session 和 Agent Identity 三种账号交付方式。
 
 - `Codex2API`
-  当前保持 OAuth 接入，不支持 Plus 会话直导。
+  当前固定使用 OAuth 交付。
+
+- `webchat`
+  OpenAI flow 的私有远程上传 target，注册成功后读取当前 ChatGPT Session 并上传。
+
+- `ChatGPT2API`
+  OpenAI flow 的私有远程上传 target，固定读取当前 ChatGPT Session 并上传。
 
 - `Kiro`
   独立的 Builder ID 注册、桌面授权和 `kiro.rs` 上传链路，不复用 OpenAI 的 Plus 和平台接入逻辑。
@@ -55,12 +62,17 @@
 - `Grok`
   独立的 xAI 注册链路。选择 `webchat2api` 时提取并上传 SSO；选择 `grok2api` 时将 SSO 上传到固定的 `pool: auto` 账号池；选择 `SUB2API` 时使用 SUB2API 官方 OAuth 自动完成授权和账号创建，也可开启双发布，先上传到 `grok2api` 再继续 OAuth。Grok 注册邮箱固定作为创建到 `SUB2API` 的账号名称。
 
-## Plus 模式
+## OpenAI 账号交付
 
-- Plus 模式下，侧边栏会先显示 `账号接入策略`，再显示 `Plus 支付`。
-- `账号接入策略` 只选择接入方式：`OAuth` 或 `使用会话 JSON 导入`；会话导入的目标由上方 `来源` 自动决定，`Codex2API` 当前仅支持 `OAuth`。
-- Plus 模式下的步骤不是固定一套，系统会按支付方式和账号接入策略动态切换尾链。
-- Plus 模式当前只支持邮箱注册，不支持手机号注册。
+- 在 OpenAI flow 选择来源后，多方式 target 会显示独立的 `账号交付` 控件；偏好按 target 保存，切换来源后会恢复对应 target 的选择。
+- `CPA` 可选择 `OAuth` 或 `ChatGPT Session`；`SUB2API` 可选择 `OAuth`、`ChatGPT Session` 或 `Agent Identity`。
+- `Codex2API` 固定使用 `OAuth`；`webchat` 和 `ChatGPT2API` 固定使用 ChatGPT Session，因此不会显示多余的选择控件。
+- `Agent Identity` 会先完成 SUB2API 配置预检，再在内存中生成身份并导入；原始 ChatGPT access token、私钥和完整敏感载荷不会写入持久设置或日志。
+- 账号交付方式在 workflow 运行期间、设置锁定期间以及贡献模式下不可编辑；贡献模式固定使用 OAuth。
+
+## Plus 状态
+
+Plus 当前暂时不可用：侧边栏和启动入口均隐藏/关闭 Plus，旧配置也会被强制归一为关闭。PayPal、Hosted 和免支付底层实现仅作为后续恢复所需的 dormant 代码保留。
 
 ## 自动化能力
 
@@ -82,7 +94,7 @@
 1. 在 `chrome://extensions/` 打开开发者模式。
 2. 点击“加载已解压的扩展程序”，选择本项目目录。
 3. 打开扩展侧边栏，先选择当前要跑的 `flow` 和 `来源`。
-4. 按你的使用方式配置邮箱、验证码来源、Plus 支付或平台参数。
+4. 按你的使用方式配置邮箱、验证码来源、账号交付方式和目标平台参数。
 5. 先手动跑通前几步，再使用 `Auto` 跑完整链路。
 
 ## 操作间延迟
@@ -96,6 +108,7 @@
 - [项目文件结构说明.md](./项目文件结构说明.md)
 - [项目完整链路说明.md](./项目完整链路说明.md)
 - [项目开发规范（AI协作）.md](./项目开发规范（AI协作）.md)
+- [使用教程总索引](./docs/使用教程/使用教程.md)
 
 如果你只想知道“这个扩展能做什么、该怎么开用”，看本 README 就够了。
 

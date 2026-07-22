@@ -31,6 +31,7 @@
     const {
       addLog: rawAddLog = async () => {},
       completeNodeFromBackground,
+      getStepIdByKeyForState = null,
       normalizeSub2ApiUrl = (value) => value,
       throwIfStopped = () => {},
       sleepWithStop = async () => {},
@@ -88,7 +89,16 @@
 
     function resolveVisibleStep(state = {}) {
       const visibleStep = Math.floor(Number(state?.visibleStep) || 0);
-      return visibleStep > 0 ? visibleStep : 10;
+      if (visibleStep > 0) {
+        return visibleStep;
+      }
+      const resolvedStep = typeof getStepIdByKeyForState === 'function'
+        ? Math.floor(Number(getStepIdByKeyForState('sub2api-agent-identity-import', state)) || 0)
+        : 0;
+      if (resolvedStep > 0) {
+        return resolvedStep;
+      }
+      throw new Error('无法解析 SUB2API Agent Identity 交付节点的当前步骤，请检查 workflow 装配。');
     }
 
     function resolveAccountName(state = {}, session = null, authJson = null) {
