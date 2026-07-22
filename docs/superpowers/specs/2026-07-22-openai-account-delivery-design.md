@@ -1,7 +1,7 @@
 # OpenAI 账号交付架构升级设计
 
 > 日期：2026-07-22
-> 状态：待书面复核
+> 状态：已确认，实施中
 > 适用仓库：FlowPilot
 
 ## 1. 背景
@@ -261,6 +261,14 @@ registration stage
 - 统一完成页面等待、内容脚本注入、消息发送、结果校验和错误文案。
 - CPA Session、SUB2API Session、Agent Identity、webchat 和 ChatGPT2API 全部依赖该读取器。
 
+读取器接受调用方声明的必需字段，不把所有发布器强制成同一种会话契约：
+
+- CPA Session、SUB2API Session 和 webchat 请求完整 `session`。
+- Agent Identity 和 ChatGPT2API 显式要求 `accessToken`。
+- 返回对象可以同时包含 `session` 与 `accessToken`，但缺少调用方要求字段时必须继续等待或明确失败。
+
+会话就绪采用有界重试：首次读取前等待 1 秒，未就绪时每 2 秒重试一次，最多读取 11 次。只有“session 尚未就绪”或“accessToken 尚未就绪”属于可重试状态；用户 Stop、标签页关闭、URL 不受支持、配置错误、脚本注入失败和消息协议错误立即失败。调用方不得在读取器外再包一层无条件整步重试。
+
 `cpa-session-import.js` 和 `sub2api-session-import.js` 删除各自复制的 URL 判断、标签选择、注入和 session 读取实现，只保留“读会话 -> 调目标 API -> 完成节点”的编排。
 
 ## 9. Agent Identity 模块
@@ -284,6 +292,8 @@ registration stage
 4. 写入结构化日志并完成节点。
 
 `background/sub2api-api.js` 只负责登录、分组、代理和 `/api/v1/admin/accounts/import/codex-session` 协议。它可以接收已经构造好的 `auth.json`，但不得生成密钥、解析 OpenAI claims 或调用 OpenAI Agent 注册接口。
+
+SUB2API 的登录、目标分组解析和代理解析必须在生成密钥、调用 OpenAI Agent 注册之前完成预检。Session 与 Agent Identity 共用同一个 SUB2API 导入载荷构造器、warnings 归一化、成功/失败计数和响应解析器，避免两个执行器逐渐形成不同协议。
 
 ### 9.2 协议数据流
 
@@ -342,6 +352,9 @@ SUB2API API 模块把该对象 `JSON.stringify` 后放入既有 `content` 字段
 - Agent Identity 模式失败时不得静默降级为 Session，以免意外发送 accessToken。
 - Web Crypto 或 Ed25519 不可用时输出明确错误并停止当前节点。
 - 每个异步边界前后继续执行 Stop 检查；不可中断的密钥生成结束后立即再次检查。
+- OpenAI Agent 注册是不可逆边界。注册成功后，后续 SUB2API 导入若发生可重试错误，只能复用当前执行内存中的同一份 `auth.json`，不得重新生成密钥或重新注册 Agent。
+- 禁止对 Agent Identity 整个步骤做无条件自动重试；否则网络抖动会生成孤立 Agent。重试策略必须按“注册前”和“注册后”分界，并由步骤内部显式控制。
+- `agent_identity` 对应的方法、Web Crypto 能力或目标 route 不存在时必须立即失败，绝不能回退到 `session`。
 
 ## 10. Sidepanel 设计
 
@@ -409,9 +422,10 @@ SUB2API API 模块把该对象 `JSON.stringify` 后放入既有 `content` 字段
 
 - 先写 Agent Identity 模块、步骤和 SUB2API 导入契约失败测试。
 - 实现独立 OpenAI Agent 协议模块和 SUB2API 编排步骤。
-- 用 fake crypto/fetch 验证 public key、claims、register payload 和 auth JSON。
+- 用 fake crypto/fetch 精确验证 OpenSSH public key 编码、PKCS#8 Base64、claims、register payload、Agent 注册响应和 auth JSON。
 - 断言发往 SUB2API 的序列化内容不包含 accessToken，日志和持久状态不含 token/私钥。
 - 验证 Stop、超时、Ed25519 不支持和远端错误分支。
+- 验证 SUB2API 预检发生在 Agent 注册之前；注册后的导入重试复用同一份内存 `auth.json`，且不会第二次注册 Agent。
 - 该阶段先完成独立模块、SUB2API 通用导入接口和步骤测试，不注册可运行 route。
 - 阶段通过后提交。
 
@@ -460,4 +474,4 @@ SUB2API API 模块把该对象 `JSON.stringify` 后放入既有 `content` 字段
 
 ## 14. 回滚策略
 
-每个阶段独立提交，使用 `git revert <阶段提交>` 回滚，不覆盖后续用户改动。配置迁移提交回滚时仍需保留对 schema v6 的读取兼容，不能把已经写入的 canonical `accountDeliveryMode` 当成未知字段丢弃；因此一旦阶段 1 发布，回滚应优先做前向兼容修复，而不是降回只认识旧 Plus 字段的版本。
+每个阶段独立提交，使用 `git revert <阶段提交>` 回滚，不覆盖后续用户改动。配置迁移提交回滚时仍需保留对 schema v6 的读取兼容，不能把已经写入的 canonical `accountDeliveryMode` 当成未知字段丢弃；因此一旦 schema v6 发布，回滚应优先做前向兼容修复，而不是降回只认识旧 Plus 字段的版本。
