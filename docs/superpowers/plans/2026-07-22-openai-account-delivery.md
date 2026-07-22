@@ -401,14 +401,14 @@ git commit -m "docs: 更新 OpenAI 账号交付链路说明"
 **Files:**
 - No production code changes expected
 
-- [ ] **Step 1: 使用 finishing-a-development-branch 流程复核**
+- [x] **Step 1: 使用 finishing-a-development-branch 流程复核**
 
 重新运行完整测试与静态门禁，核对功能分支相对本地 `dev` 的提交和 diff。用户已明确不处理远程，因此不 fetch、不 push、不创建 PR。
 
-- [ ] **Step 2: 集成本地分支**
+- [x] **Step 2: 集成本地分支**
 
 在不覆盖用户改动的前提下，把功能分支提交合并到用户指定的本地测试分支；若正式仓库工作区在此期间出现重叠改动，先报告冲突而不重置或回退。
 
-- [ ] **Step 3: 提供手工验收路径**
+- [x] **Step 3: 提供手工验收路径**
 
 让用户加载本地扩展后验证 CPA OAuth/Session、SUB2API OAuth/Session/Agent Identity、三个单一方式目标、跨目标偏好恢复、运行锁、Plus 隐藏，以及 Agent Identity 导入结果。
