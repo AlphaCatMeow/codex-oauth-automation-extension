@@ -88,13 +88,13 @@
         cleanupScopes: [],
         detectionMatchers: [
           {
-            hostnames: ['auth.x.ai'],
+            hostnames: ['auth.x.ai', 'accounts.x.ai'],
             pathPrefixes: ['/oauth2/'],
           },
         ],
         familyMatchers: [
           {
-            hostnames: ['auth.x.ai'],
+            hostnames: ['auth.x.ai', 'accounts.x.ai'],
             pathPrefixes: ['/oauth2/'],
           },
         ],

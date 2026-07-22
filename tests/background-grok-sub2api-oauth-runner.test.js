@@ -66,6 +66,8 @@ function createHarness(options = {}) {
   const createdAccounts = [];
   const directScriptCalls = [];
   const directConsentResults = [...(options.directConsentResults || [])];
+  const directPageStates = [...(options.directPageStates || [])];
+  const directScriptPage = options.directScriptPage || null;
   const events = [];
   let ensureReadyCount = 0;
   const pageStates = [...(options.pageStates || [])];
@@ -101,6 +103,25 @@ function createHarness(options = {}) {
       scripting: {
         async executeScript(options) {
           directScriptCalls.push(options);
+          if (directScriptPage) {
+            const previousWindow = global.window;
+            const previousDocument = global.document;
+            const previousLocation = global.location;
+            global.window = directScriptPage.window;
+            global.document = directScriptPage.document;
+            global.location = directScriptPage.location;
+            try {
+              return [{ result: options.func(...(options.args || [])) }];
+            } finally {
+              global.window = previousWindow;
+              global.document = previousDocument;
+              global.location = previousLocation;
+            }
+          }
+          if (options.args?.[0] === 'inspect-state') {
+            events.push('direct-inspect');
+            return [{ result: directPageStates.length ? directPageStates.shift() : null }];
+          }
           events.push('direct-consent');
           return directConsentResults.shift() || [{ result: { clicked: false } }];
         },
@@ -176,12 +197,41 @@ test('Grok SUB2API OAuth start stores hidden context and opens the authorization
   assert.equal(runtime.oauth.status, 'awaiting_authorization');
   assert.equal(harness.completed.at(-1).nodeId, 'grok-start-sub2api-oauth');
   assert.equal(harness.getEnsureReadyCount() >= 1, true);
-  assert.deepEqual(harness.events.slice(-3), [
+  assert.equal(harness.logs.filter((message) => message.includes('Chrome 页面加载已稳定')).length, 1);
+  assert.equal(harness.logs.filter((message) => message.includes('内容脚本 PING 已连通')).length, 1);
+  assert.deepEqual(harness.events.slice(-5), [
+    'direct-inspect',
     'GET_GROK_SUB2API_OAUTH_STATE',
+    'direct-inspect',
     'GET_GROK_SUB2API_OAUTH_STATE',
     'completed:grok-start-sub2api-oauth',
   ]);
   assert.equal(harness.logs.some((message) => message.includes('session-1') || message.includes('state-1')), false);
+});
+
+test('Grok SUB2API OAuth start uses a direct page probe when the content message path is stale', async () => {
+  const harness = createHarness({
+    directPageStates: [
+      { state: 'loading' },
+      { state: 'consent_page' },
+    ],
+  });
+
+  await harness.runner.executeGrokStartSub2ApiOAuth({ nodeId: 'grok-start-sub2api-oauth', step: 7 });
+
+  assert.equal(harness.completed.at(-1).nodeId, 'grok-start-sub2api-oauth');
+  assert.deepEqual(harness.events.slice(-3), [
+    'direct-inspect',
+    'direct-inspect',
+    'completed:grok-start-sub2api-oauth',
+  ]);
+  assert.equal(harness.events.includes('GET_GROK_SUB2API_OAUTH_STATE'), false);
+  assert.equal(harness.logs.some((message) => (
+    message.includes('secret-state')
+      || message.includes('session-1')
+      || message.includes('state-1')
+      || message.includes('response_type=code')
+  )), false);
 });
 
 test('Grok SUB2API OAuth completion clicks allow, reads code locally, and creates the account', async () => {
@@ -251,6 +301,80 @@ test('Grok SUB2API OAuth completion directly clicks consent when the content scr
   assert.equal(harness.events[0], 'direct-consent');
   assert.equal(harness.createdAccounts.length, 1);
   assert.equal(harness.logs.some((message) => message.includes('正在自动确认 Grok OAuth 授权')), true);
+});
+
+test('Grok SUB2API OAuth diagnostics do not repeat unchanged DOM and content states', async () => {
+  const harness = createHarness({
+    initialState: createInitialState({
+      sessionId: 'session-existing',
+      state: 'state-existing',
+      authUrl: 'https://accounts.x.ai/oauth2/consent',
+      authTabId: 72,
+      proxyId: null,
+      groupIds: [31],
+      status: 'awaiting_authorization',
+      startedAt: 1_999_000,
+    }),
+    directConsentResults: [
+      [{ result: { state: 'consent_waiting', clicked: false } }],
+      [{ result: { state: 'consent_waiting', clicked: false } }],
+      [{ result: { state: 'consent_waiting', clicked: false } }],
+    ],
+    pageStates: [
+      { state: 'loading' },
+      { state: 'loading' },
+      { state: 'code_page', code: 'visible-code-value' },
+    ],
+  });
+
+  await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
+
+  assert.equal(harness.logs.filter((message) => message.includes('授权页状态：')).length, 1);
+  assert.equal(harness.logs.filter((message) => message.includes('内容脚本状态：state=loading')).length, 1);
+});
+
+test('Grok SUB2API OAuth completion clicks allow when consent page also contains code-page copy', async () => {
+  let clickCount = 0;
+  const allowButton = {
+    disabled: false,
+    textContent: '允许',
+    value: '',
+    click() { clickCount += 1; },
+    getAttribute() { return ''; },
+    getBoundingClientRect() { return { width: 250, height: 40 }; },
+  };
+  const harness = createHarness({
+    initialState: createInitialState({
+      sessionId: 'session-existing',
+      state: 'state-existing',
+      authUrl: 'https://accounts.x.ai/oauth2/consent',
+      authTabId: 72,
+      proxyId: null,
+      groupIds: [31],
+      status: 'awaiting_authorization',
+      startedAt: 1_999_000,
+    }),
+    directScriptPage: {
+      window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
+      document: {
+        title: 'Authorize Grok Build',
+        body: { textContent: '授权 Grok Build 输入此代码以完成登录' },
+        readyState: 'complete',
+        querySelectorAll: () => [allowButton],
+      },
+      location: { hostname: 'accounts.x.ai', pathname: '/oauth2/consent' },
+    },
+    pageStates: [{ state: 'code_page', code: 'visible-code-value' }],
+  });
+
+  await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
+
+  assert.equal(clickCount, 1);
+  assert.equal(harness.createdAccounts.length, 1);
+  assert.equal(harness.logs.filter((message) => (
+    message.includes('[Grok OAuth 诊断]') && message.includes('已点击允许')
+  )).length, 1);
+  assert.equal(harness.logs.some((message) => message.includes('clicked=no')), false);
 });
 
 test('Grok SUB2API OAuth retry regenerates an errored session without touching webchat completion', async () => {

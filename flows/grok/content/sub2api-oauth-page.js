@@ -23,11 +23,16 @@
 
   function classifyPageSnapshot(snapshot = {}) {
     const pageText = cleanText(snapshot.pageText);
+    const actionIndex = (Array.isArray(snapshot.actionTexts) ? snapshot.actionTexts : [])
+      .findIndex((text) => ALLOW_ACTION_PATTERN.test(cleanText(text)));
     if (ERROR_PAGE_PATTERN.test(pageText)) {
       return {
         state: 'error_page',
         error: 'Grok OAuth 授权页面显示失败。',
       };
+    }
+    if (CONSENT_PAGE_PATTERN.test(pageText) && actionIndex >= 0) {
+      return { state: 'consent_page', actionIndex };
     }
     if (CODE_PAGE_PATTERN.test(pageText)) {
       const code = (Array.isArray(snapshot.codeCandidates) ? snapshot.codeCandidates : [])
@@ -36,9 +41,7 @@
       return code ? { state: 'code_page', code } : { state: 'code_waiting' };
     }
     if (CONSENT_PAGE_PATTERN.test(pageText)) {
-      const actionIndex = (Array.isArray(snapshot.actionTexts) ? snapshot.actionTexts : [])
-        .findIndex((text) => ALLOW_ACTION_PATTERN.test(cleanText(text)));
-      return actionIndex >= 0 ? { state: 'consent_page', actionIndex } : { state: 'consent_waiting' };
+      return { state: 'consent_waiting' };
     }
     return { state: 'loading' };
   }
