@@ -55,6 +55,7 @@ test('operationDelayEnabled is normalized through the background settings payloa
     const PERSISTED_SETTING_KEYS = Object.keys(PERSISTED_SETTING_DEFAULTS);
     function resolveLegacyAutoStepDelaySeconds() { return undefined; }
     ${extractFunction('normalizePersistentSettingValue')}
+    ${extractFunction('getSettingsSchemaLegacyMigrationStorageKeys')}
     ${extractFunction('buildPersistentSettingsPayload')}
     return { buildPersistentSettingsPayload };
   `)();

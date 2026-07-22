@@ -10,9 +10,6 @@
   const DEFAULT_OPENAI_TARGET_ID = flowRegistryApi.DEFAULT_OPENAI_TARGET_ID || 'cpa';
   const SIGNUP_METHOD_EMAIL = 'email';
   const SIGNUP_METHOD_PHONE = 'phone';
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
   const ACCOUNT_DELIVERY_MODE_OAUTH = accountDeliveryApi.ACCOUNT_DELIVERY_MODE_OAUTH || 'oauth';
   const ACCOUNT_DELIVERY_MODE_SESSION = accountDeliveryApi.ACCOUNT_DELIVERY_MODE_SESSION || 'session';
   const ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY = accountDeliveryApi.ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY || 'agent_identity';
@@ -75,7 +72,6 @@
     accountDeliveryRouteByMode: Object.freeze({
       [ACCOUNT_DELIVERY_MODE_OAUTH]: 'oauth',
     }),
-    supportedPlusAccountAccessStrategies: Object.freeze([PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH]),
   });
 
   const MODE_SWITCH_RELEVANT_KEYS = Object.freeze([
@@ -84,7 +80,7 @@
     'phoneVerificationEnabled',
     'plusModeEnabled',
     'signupMethod',
-    'plusAccountAccessStrategy',
+    'accountDeliveryMode',
     'targetId',
   ]);
   const OPENAI_WEBCHAT_RELEVANT_KEYS = Object.freeze([
@@ -141,17 +137,6 @@
       : SIGNUP_METHOD_EMAIL;
   }
 
-  function normalizePlusAccountAccessStrategy(value = '') {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-    }
-    if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-    }
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-  }
-
   function normalizeAccountDeliveryMode(value = '', fallback = ACCOUNT_DELIVERY_MODE_OAUTH) {
     if (typeof accountDeliveryApi.normalizeAccountDeliveryMode === 'function') {
       return accountDeliveryApi.normalizeAccountDeliveryMode(value, fallback);
@@ -191,28 +176,6 @@
       normalized.push(modeId);
     });
     return normalized.length ? normalized : [ACCOUNT_DELIVERY_MODE_OAUTH];
-  }
-
-  function getPlusAccountSessionStrategyForTarget(targetId = '') {
-    const normalizedTargetId = String(targetId || '').trim().toLowerCase();
-    if (normalizedTargetId === 'sub2api') {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-    }
-    if (normalizedTargetId === 'cpa') {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-    }
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-  }
-
-  function normalizePlusAccountAccessStrategyForTarget(value = '', targetId = '') {
-    const normalizedStrategy = normalizePlusAccountAccessStrategy(value);
-    if (
-      normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-      || normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-    ) {
-      return getPlusAccountSessionStrategyForTarget(targetId);
-    }
-    return normalizedStrategy;
   }
 
   function normalizeOpenAiTargetList(values = []) {
@@ -620,37 +583,6 @@
       const canEditAccountDeliveryMode = canShowAccountDeliveryControl
         && !runtimeLocks.autoRunLocked
         && !runtimeLocks.settingsMenuLocked;
-      const requestedPlusAccountAccessStrategy = normalizePlusAccountAccessStrategyForTarget(
-        options?.plusAccountAccessStrategy ?? state?.plusAccountAccessStrategy,
-        effectiveTargetId
-      );
-      const targetPlusAccountAccessStrategies = (Array.isArray(targetState.supportedPlusAccountAccessStrategies)
-        && targetState.supportedPlusAccountAccessStrategies.length > 0
-        ? targetState.supportedPlusAccountAccessStrategies
-        : [PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH])
-        .map(normalizePlusAccountAccessStrategy)
-        .filter((strategy, index, strategies) => strategy && strategies.indexOf(strategy) === index);
-      const availablePlusAccountAccessStrategies = activeFlowId === 'openai'
-        && Boolean(flowState.supportsPlusMode)
-        && Boolean(runtimeLocks.plusModeEnabled)
-        && effectiveSignupMethod === SIGNUP_METHOD_EMAIL
-        ? (runtimeLocks.accountContribution
-          ? [PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION]
-          : targetPlusAccountAccessStrategies)
-        : [PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH];
-      const effectivePlusAccountAccessStrategy = runtimeLocks.accountContribution
-        && runtimeLocks.plusModeEnabled
-        && effectiveSignupMethod === SIGNUP_METHOD_EMAIL
-        ? PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-        : availablePlusAccountAccessStrategies.includes(requestedPlusAccountAccessStrategy)
-        ? requestedPlusAccountAccessStrategy
-        : PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-      const canEditPlusAccountAccessStrategy = activeFlowId === 'openai'
-        && Boolean(flowState.supportsPlusMode)
-        && Boolean(runtimeLocks.plusModeEnabled)
-        && effectiveSignupMethod === SIGNUP_METHOD_EMAIL
-        && !runtimeLocks.accountContribution
-        && availablePlusAccountAccessStrategies.length > 1;
       const visibleGroupIds = typeof flowRegistryApi.getVisibleGroupIds === 'function'
         && isRegisteredFlowId(activeFlowId)
         ? flowRegistryApi.getVisibleGroupIds(activeFlowId, effectiveTargetId)
@@ -691,12 +623,10 @@
         canShowPlusSettings: activeFlowId === 'openai' && Boolean(flowState.supportsPlusMode),
         canSwitchFlow: Boolean(flowState.canSwitchFlow),
         canEditAccountDeliveryMode,
-        canEditPlusAccountAccessStrategy,
         canShowAccountDeliveryControl,
         canSelectPhoneSignup: canSelectPhoneSignup,
         canUsePhoneSignup: canSelectPhoneSignup,
         canUseSelectedTarget: targetSupported,
-        effectivePlusAccountAccessStrategy,
         effectiveAccountDeliveryMode,
         effectiveAccountDeliveryRouteId,
         effectiveSignupMethod,
@@ -707,12 +637,10 @@
         openaiWebchat,
         grok2Api,
         panelCapabilities: targetState,
-        requestedPlusAccountAccessStrategy,
         requestedAccountDeliveryMode,
         requestedSignupMethod,
         requestedTargetId,
         runtimeLocks,
-        availablePlusAccountAccessStrategies,
         availableAccountDeliveryModes,
         shouldWarnCpaPhoneSignup: effectiveSignupMethod === SIGNUP_METHOD_PHONE
           && Boolean(targetState.requiresPhoneSignupWarning),
@@ -721,7 +649,6 @@
           accountDeliveryMode: effectiveAccountDeliveryMode,
           accountDeliveryRouteId: effectiveAccountDeliveryRouteId,
           targetId: effectiveTargetId,
-          plusAccountAccessStrategy: effectivePlusAccountAccessStrategy,
           plusModeEnabled: runtimeLocks.plusModeEnabled,
           phoneVerificationEnabled: runtimeLocks.phoneVerificationEnabled,
           openaiChatgpt2ApiUploadEnabled: openaiChatgpt2Api.uploadRequired,
@@ -874,6 +801,18 @@
         });
       }
 
+      if (
+        capabilityState.activeFlowId === 'openai'
+        && changedKeySet.has('accountDeliveryMode')
+        && capabilityState.requestedAccountDeliveryMode !== capabilityState.effectiveAccountDeliveryMode
+      ) {
+        normalizedUpdates.accountDeliveryMode = capabilityState.effectiveAccountDeliveryMode;
+        errors.push({
+          code: 'account_delivery_mode_unsupported',
+          message: `当前来源 ${getTargetLabel(capabilityState.activeFlowId, capabilityState.effectiveTargetId)} 不支持所选账号交付方式。`,
+        });
+      }
+
       if (changedKeySet.has('plusModeEnabled') && Boolean(state?.plusModeEnabled) && !flowState.supportsPlusMode) {
         normalizedUpdates.plusModeEnabled = false;
         errors.push({
@@ -950,7 +889,6 @@
       getOpenAiTargetCapabilities,
       normalizeFlowId,
       normalizeOpenAiTargetId,
-      normalizePlusAccountAccessStrategy,
       normalizeSignupMethod,
       resolveSidepanelCapabilities,
       resolveSignupMethod,
@@ -967,9 +905,6 @@
     DEFAULT_OPENAI_TARGET_ID,
     FLOW_CAPABILITIES,
     OPENAI_TARGET_CAPABILITIES,
-    PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH,
-    PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
-    PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
     ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY,
     ACCOUNT_DELIVERY_MODE_IDS,
     ACCOUNT_DELIVERY_MODE_OAUTH,
@@ -980,7 +915,6 @@
     normalizeFlowId,
     normalizeAccountDeliveryMode,
     normalizeOpenAiTargetId,
-    normalizePlusAccountAccessStrategy,
     normalizeSignupMethod,
   };
 });

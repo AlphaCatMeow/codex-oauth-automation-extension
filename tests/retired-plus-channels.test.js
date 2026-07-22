@@ -51,20 +51,16 @@ test('OpenAI workflow no longer exports retired GPC and Plus Auto variants', () 
   const scope = {};
   const api = new Function('self', `${readStepDefinitionsBundle()}; return self.MultiPageOpenAiWorkflow;`)(scope);
 
-  for (const variantKey of [
-    'plusGpc',
-    'plusGpcSub2apiSession',
-    'plusGpcCpaSession',
-    'plusGpcPhone',
-    'plusGpcPhoneRelogin',
-    'plusAuto',
-    'plusAutoSub2apiSession',
-    'plusAutoCpaSession',
-    'plusAutoPhone',
-    'plusAutoPhoneRelogin',
-  ]) {
-    assert.deepEqual(api.getVariantStepDefinitions(variantKey), api.getVariantStepDefinitions('normal'));
-  }
+  assert.equal(api.getVariantStepDefinitions, undefined);
+  assert.equal(typeof api.getModeStepDefinitions, 'function');
+
+  const steps = api.getModeStepDefinitions({
+    targetId: 'sub2api',
+    accountDeliveryMode: 'agent_identity',
+    plusModeEnabled: false,
+  });
+  assert.equal(steps.at(-1)?.key, 'sub2api-agent-identity-import');
+  assert.equal(steps.some((step) => step.key.startsWith('plus-')), false);
 });
 
 test('sidepanel keeps dormant PayPal settings but removes retired channel controls', () => {

@@ -45,7 +45,7 @@ test('legacy settings importer converts flat legacy keys into canonical settings
     },
   });
 
-  assert.equal(imported.settingsSchemaVersion, 5);
+  assert.equal(imported.settingsSchemaVersion, 6);
   assert.equal(imported.settingsState.activeFlowId, 'kiro');
   assert.equal(imported.settingsState.flows.openai.selectedTargetId, 'sub2api');
   assert.equal(imported.settingsState.flows.kiro.selectedTargetId, 'kiro-rs');

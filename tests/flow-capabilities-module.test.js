@@ -166,6 +166,27 @@ test('flow capability registry hides fixed delivery controls and locks contribut
   assert.equal(running.effectiveAccountDeliveryMode, 'session');
 });
 
+test('flow capability registry normalizes unsupported account delivery mode switches', () => {
+  const api = loadApi();
+  const registry = api.createFlowCapabilityRegistry();
+
+  const validation = registry.validateModeSwitch({
+    state: {
+      activeFlowId: 'openai',
+      targetId: 'cpa',
+      accountDeliveryMode: 'agent_identity',
+    },
+    changedKeys: ['accountDeliveryMode'],
+  });
+
+  assert.equal(validation.ok, false);
+  assert.equal(validation.normalizedUpdates.accountDeliveryMode, 'oauth');
+  assert.deepEqual(
+    validation.errors.map((entry) => entry.code),
+    ['account_delivery_mode_unsupported']
+  );
+});
+
 test('flow capability registry defaults unknown flows to minimal non-phone capabilities', () => {
   const api = loadApi();
   const registry = api.createFlowCapabilityRegistry();
@@ -401,18 +422,19 @@ test('flow capability registry falls back to OAuth when the current source canno
       targetId: 'codex2api',
       signupMethod: 'email',
       plusModeEnabled: true,
-      plusAccountAccessStrategy: 'cpa_codex_session',
+      accountDeliveryMode: 'session',
     },
   });
 
   assert.deepEqual(
-    capabilityState.availablePlusAccountAccessStrategies,
+    capabilityState.availableAccountDeliveryModes,
     ['oauth']
   );
-  assert.equal(capabilityState.requestedPlusAccountAccessStrategy, 'oauth');
-  assert.equal(capabilityState.effectivePlusAccountAccessStrategy, 'oauth');
-  assert.equal(capabilityState.canEditPlusAccountAccessStrategy, false);
-  assert.equal(capabilityState.stepDefinitionOptions.plusAccountAccessStrategy, 'oauth');
+  assert.equal(capabilityState.requestedAccountDeliveryMode, 'session');
+  assert.equal(capabilityState.effectiveAccountDeliveryMode, 'oauth');
+  assert.equal(capabilityState.canEditAccountDeliveryMode, false);
+  assert.equal(capabilityState.stepDefinitionOptions.accountDeliveryMode, 'oauth');
+  assert.equal(capabilityState.stepDefinitionOptions.accountDeliveryRouteId, 'oauth');
 });
 
 test('flow capability registry validates OpenAI webchat target configuration', () => {
@@ -432,7 +454,7 @@ test('flow capability registry validates OpenAI webchat target configuration', (
   assert.equal(missingConfigResult.errors[0].code, 'openai_webchat_config_required');
   assert.equal(missingConfigResult.capabilityState.openaiWebchat.targetIsWebchat, true);
   assert.equal(missingConfigResult.capabilityState.stepDefinitionOptions.openaiWebchatUploadEnabled, true);
-  assert.equal(missingConfigResult.capabilityState.effectivePlusAccountAccessStrategy, 'oauth');
+  assert.equal(missingConfigResult.capabilityState.effectiveAccountDeliveryMode, 'session');
 
   const configuredState = registry.resolveSidepanelCapabilities({
     state: {
@@ -447,8 +469,9 @@ test('flow capability registry validates OpenAI webchat target configuration', (
   assert.equal(configuredState.openaiWebchat.configComplete, true);
   assert.equal(configuredState.openaiWebchat.uploadRequired, true);
   assert.equal(configuredState.stepDefinitionOptions.openaiWebchatUploadEnabled, true);
-  assert.deepEqual(configuredState.availablePlusAccountAccessStrategies, ['oauth']);
-  assert.equal(configuredState.effectivePlusAccountAccessStrategy, 'oauth');
+  assert.deepEqual(configuredState.availableAccountDeliveryModes, ['session']);
+  assert.equal(configuredState.effectiveAccountDeliveryMode, 'session');
+  assert.equal(configuredState.effectiveAccountDeliveryRouteId, 'webchat-session');
 });
 
 test('flow capability registry disables phone settings for OpenAI webchat target', () => {
@@ -518,7 +541,7 @@ test('flow capability registry validates OpenAI ChatGPT2API target configuration
   assert.equal(missingConfigResult.capabilityState.openaiChatgpt2Api.targetIsChatgpt2Api, true);
   assert.equal(missingConfigResult.capabilityState.stepDefinitionOptions.openaiChatgpt2ApiUploadEnabled, true);
   assert.equal(missingConfigResult.capabilityState.stepDefinitionOptions.openaiWebchatUploadEnabled, false);
-  assert.equal(missingConfigResult.capabilityState.effectivePlusAccountAccessStrategy, 'oauth');
+  assert.equal(missingConfigResult.capabilityState.effectiveAccountDeliveryMode, 'session');
 
   const configuredState = registry.resolveSidepanelCapabilities({
     state: {
@@ -534,8 +557,9 @@ test('flow capability registry validates OpenAI ChatGPT2API target configuration
   assert.equal(configuredState.openaiChatgpt2Api.uploadRequired, true);
   assert.equal(configuredState.stepDefinitionOptions.openaiChatgpt2ApiUploadEnabled, true);
   assert.equal(configuredState.stepDefinitionOptions.openaiWebchatUploadEnabled, false);
-  assert.deepEqual(configuredState.availablePlusAccountAccessStrategies, ['oauth']);
-  assert.equal(configuredState.effectivePlusAccountAccessStrategy, 'oauth');
+  assert.deepEqual(configuredState.availableAccountDeliveryModes, ['session']);
+  assert.equal(configuredState.effectiveAccountDeliveryMode, 'session');
+  assert.equal(configuredState.effectiveAccountDeliveryRouteId, 'chatgpt2api-session');
 });
 
 test('flow capability registry disables phone settings for OpenAI ChatGPT2API target', () => {

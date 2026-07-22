@@ -54,6 +54,7 @@ test('cloudflare temp email settings normalize and expose the random-subdomain t
     extractFunction('normalizeCloudflareTempEmailReceiveMailbox'),
     extractFunction('getCloudflareTempEmailConfig'),
     extractFunction('normalizePersistentSettingValue'),
+    extractFunction('getSettingsSchemaLegacyMigrationStorageKeys'),
     extractFunction('buildPersistentSettingsPayload'),
   ].join('\n');
 
@@ -241,6 +242,7 @@ function normalizePhoneCodePollIntervalSeconds(value) { return Number(value) || 
 function normalizePhoneCodePollMaxRounds(value) { return Number(value) || 4; }
 function resolveLegacyAutoStepDelaySeconds() { return undefined; }
 ${extractFunction('normalizePersistentSettingValue')}
+${extractFunction('getSettingsSchemaLegacyMigrationStorageKeys')}
 ${extractFunction('buildPersistentSettingsPayload')}
 return {
   buildPersistentSettingsPayload,

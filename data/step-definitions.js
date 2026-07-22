@@ -217,9 +217,7 @@
 
   const defaultWorkflowBuilder = getFlowWorkflow(DEFAULT_ACTIVE_FLOW_ID);
   const STEP_DEFINITIONS = cloneSteps(
-    defaultWorkflowBuilder?.getVariantStepDefinitions
-      ? defaultWorkflowBuilder.getVariantStepDefinitions('normal')
-      : (defaultWorkflowBuilder?.getModeStepDefinitions?.({ activeFlowId: DEFAULT_ACTIVE_FLOW_ID }) || []),
+    defaultWorkflowBuilder?.getModeStepDefinitions?.({ activeFlowId: DEFAULT_ACTIVE_FLOW_ID }) || [],
     {},
     DEFAULT_ACTIVE_FLOW_ID
   );

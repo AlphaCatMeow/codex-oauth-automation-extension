@@ -348,6 +348,7 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
       'paypal-hosted-review',
       'oauth-login',
       'fetch-login-code',
+      'post-login-phone-verification',
       'confirm-oauth',
       'platform-verify',
     ]
@@ -358,8 +359,8 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
   assert.equal(hostedSteps.some((step) => step.key === 'paypal-hosted-openai-checkout'), false);
   assert.equal(hostedSteps.some((step) => step.key === 'paypal-hosted-verification'), false);
   assert.equal(hostedSteps.find((step) => step.key === 'paypal-hosted-card')?.title, '无卡直绑填写 PayPal 资料');
-  assert.deepStrictEqual(api.getStepIds({ plusModeEnabled: true, plusPaymentMethod: 'paypal-hosted' }), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-  assert.equal(api.getLastStepId({ plusModeEnabled: true, plusPaymentMethod: 'paypal-hosted' }), 15);
+  assert.deepStrictEqual(api.getStepIds({ plusModeEnabled: true, plusPaymentMethod: 'paypal-hosted' }), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  assert.equal(api.getLastStepId({ plusModeEnabled: true, plusPaymentMethod: 'paypal-hosted' }), 16);
 
   assert.deepStrictEqual(legacyPaymentSteps, plusSteps);
   assert.deepStrictEqual(
@@ -422,12 +423,14 @@ test('Plus no-payment mode removes only payment chain nodes', () => {
   const sub2apiSteps = api.getSteps({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'session',
   });
   const sub2apiNodes = api.getNodes({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'session',
   });
   assert.deepStrictEqual(sub2apiSteps.map((step) => step.key), [
     'open-chatgpt',
@@ -444,7 +447,8 @@ test('Plus no-payment mode removes only payment chain nodes', () => {
   assert.deepStrictEqual(api.getStepIds({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'session',
   }), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(sub2apiNodes.at(-1)?.nodeId, 'sub2api-session-import');
   assert.deepStrictEqual(sub2apiNodes.find((node) => node.nodeId === 'fill-profile')?.next, ['wait-registration-success']);
@@ -453,12 +457,14 @@ test('Plus no-payment mode removes only payment chain nodes', () => {
   const cpaSteps = api.getSteps({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'cpa_codex_session',
+    targetId: 'cpa',
+    accountDeliveryMode: 'session',
   });
   const cpaNodes = api.getNodes({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'cpa_codex_session',
+    targetId: 'cpa',
+    accountDeliveryMode: 'session',
   });
   assert.deepStrictEqual(cpaSteps.map((step) => step.key), [
     'open-chatgpt',
@@ -475,7 +481,8 @@ test('Plus no-payment mode removes only payment chain nodes', () => {
   assert.deepStrictEqual(api.getStepIds({
     plusModeEnabled: true,
     plusPaymentMethod: 'none',
-    plusAccountAccessStrategy: 'cpa_codex_session',
+    targetId: 'cpa',
+    accountDeliveryMode: 'session',
   }), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(cpaNodes.at(-1)?.nodeId, 'cpa-session-import');
   assert.deepStrictEqual(cpaNodes.find((node) => node.nodeId === 'fill-profile')?.next, ['wait-registration-success']);
@@ -601,7 +608,7 @@ test('OpenAI remote upload is appended only for remote publication targets', () 
   assert.equal(schemaSyncSteps.some((step) => step.key === 'openai-upload-session-to-chatgpt2api'), false);
 });
 
-test('Plus session strategy swaps the OAuth tail for a single SUB2API import node', () => {
+test('account delivery session route composes after PayPal payment for SUB2API', () => {
   const globalScope = {};
   const api = new Function('self', `${readStepDefinitionsBundle()}; return self.MultiPageStepDefinitions;`)(globalScope);
   const forbiddenTailKeys = [
@@ -618,7 +625,8 @@ test('Plus session strategy swaps the OAuth tail for a single SUB2API import nod
       options: {
         plusModeEnabled: true,
         plusPaymentMethod: 'paypal',
-        plusAccountAccessStrategy: 'sub2api_codex_session',
+        targetId: 'sub2api',
+        accountDeliveryMode: 'session',
       },
       previousNodeId: 'plus-checkout-return',
       expectedStepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
@@ -628,7 +636,8 @@ test('Plus session strategy swaps the OAuth tail for a single SUB2API import nod
       options: {
         plusModeEnabled: true,
         plusPaymentMethod: 'paypal-hosted',
-        plusAccountAccessStrategy: 'sub2api_codex_session',
+        targetId: 'sub2api',
+        accountDeliveryMode: 'session',
       },
       previousNodeId: 'paypal-hosted-review',
       expectedStepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
@@ -656,23 +665,24 @@ test('Plus session strategy swaps the OAuth tail for a single SUB2API import nod
   });
 });
 
-test('Plus phone signup never switches to SUB2API session tail even if the requested strategy is session import', () => {
+test('account delivery mode remains independent from phone signup', () => {
   const globalScope = {};
   const api = new Function('self', `${readStepDefinitionsBundle()}; return self.MultiPageStepDefinitions;`)(globalScope);
   const steps = api.getSteps({
     plusModeEnabled: true,
     plusPaymentMethod: 'paypal',
     signupMethod: 'phone',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
+    targetId: 'sub2api',
+    accountDeliveryMode: 'session',
   });
   const stepKeys = steps.map((step) => step.key);
 
-  assert.equal(stepKeys.includes('sub2api-session-import'), false);
-  assert.equal(stepKeys.includes('oauth-login'), true);
-  assert.equal(stepKeys.includes('platform-verify'), true);
+  assert.equal(stepKeys.includes('sub2api-session-import'), true);
+  assert.equal(stepKeys.includes('oauth-login'), false);
+  assert.equal(stepKeys.includes('platform-verify'), false);
 });
 
-test('Plus session strategy swaps the OAuth tail for a single CPA import node', () => {
+test('account delivery session route composes after PayPal payment for CPA', () => {
   const globalScope = {};
   const api = new Function('self', `${readStepDefinitionsBundle()}; return self.MultiPageStepDefinitions;`)(globalScope);
   const forbiddenTailKeys = [
@@ -689,7 +699,8 @@ test('Plus session strategy swaps the OAuth tail for a single CPA import node', 
       options: {
         plusModeEnabled: true,
         plusPaymentMethod: 'paypal',
-        plusAccountAccessStrategy: 'cpa_codex_session',
+        targetId: 'cpa',
+        accountDeliveryMode: 'session',
       },
       previousNodeId: 'plus-checkout-return',
       expectedStepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
@@ -699,7 +710,8 @@ test('Plus session strategy swaps the OAuth tail for a single CPA import node', 
       options: {
         plusModeEnabled: true,
         plusPaymentMethod: 'paypal-hosted',
-        plusAccountAccessStrategy: 'cpa_codex_session',
+        targetId: 'cpa',
+        accountDeliveryMode: 'session',
       },
       previousNodeId: 'paypal-hosted-review',
       expectedStepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],

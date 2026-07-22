@@ -62,7 +62,6 @@ test('background account history settings are normalized independently from hotm
     extractFunction('normalizeAccountRunHistoryHelperBaseUrl'),
     extractFunction('normalizeVerificationResendCount'),
     extractFunction('normalizePlusPaymentMethod'),
-    extractFunction('normalizePlusAccountAccessStrategy'),
     extractFunction('normalizePhoneSmsProvider'),
     extractFunction('normalizePhoneSmsProviderOrder'),
     extractFunction('normalizeSignupMethod'),
@@ -96,6 +95,7 @@ test('background account history settings are normalized independently from hotm
     extractFunction('normalizeSub2ApiGroupNames'),
     extractFunction('normalizeBoundedIntegerSetting'),
     extractFunction('normalizeLocalHttpBaseUrl'),
+    extractFunction('getSettingsSchemaLegacyMigrationStorageKeys'),
     extractFunction('buildPersistentSettingsPayload'),
     extractFunction('normalizePersistentSettingValue'),
   ].join('\n');
@@ -142,10 +142,6 @@ const SIGNUP_METHOD_PHONE = 'phone';
 const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
 const DEFAULT_ACTIVE_FLOW_ID = 'openai';
 const PLUS_PAYMENT_METHOD_PAYPAL = 'paypal';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-const DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY = PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
 const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
 const FIVE_SIM_COUNTRY_ID = 'vietnam';
@@ -182,6 +178,14 @@ const self = {
       }
       const normalizedTargetId = String(targetId || '').trim().toLowerCase();
       return normalizedTargetId === 'kiro-rs' ? normalizedTargetId : fallback;
+    },
+  },
+  MultiPageOpenAiAccountDelivery: {
+    normalizeAccountDeliveryMode(value, fallback = 'oauth') {
+      const normalized = String(value || '').trim().toLowerCase();
+      return ['oauth', 'session', 'agent_identity'].includes(normalized)
+        ? normalized
+        : fallback;
     },
   },
 };
@@ -230,9 +234,9 @@ return {
   assert.equal(api.normalizePersistentSettingValue('plusPaymentMethod', 'paypal-hosted'), 'paypal-hosted');
   assert.equal(api.normalizePersistentSettingValue('plusPaymentMethod', 'paypal'), 'paypal');
   assert.equal(api.normalizePersistentSettingValue('plusPaymentMethod', 'unknown'), 'paypal');
-  assert.equal(api.normalizePersistentSettingValue('plusAccountAccessStrategy', 'sub2api_codex_session'), 'sub2api_codex_session');
-  assert.equal(api.normalizePersistentSettingValue('plusAccountAccessStrategy', 'cpa_codex_session'), 'cpa_codex_session');
-  assert.equal(api.normalizePersistentSettingValue('plusAccountAccessStrategy', 'unknown'), 'oauth');
+  assert.equal(api.normalizePersistentSettingValue('accountDeliveryMode', 'session'), 'session');
+  assert.equal(api.normalizePersistentSettingValue('accountDeliveryMode', 'agent_identity'), 'agent_identity');
+  assert.equal(api.normalizePersistentSettingValue('accountDeliveryMode', 'unknown'), 'oauth');
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '7'), 7);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '-1'), 0);
   assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '9'), 9);

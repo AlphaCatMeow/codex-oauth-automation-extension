@@ -71,6 +71,14 @@ test('background imports node registry and wires the rebuilt Kiro executors', ()
   assert.match(source, /'openai-upload-session-to-webchat'/);
 });
 
+test('background builds default node status coverage from every registered flow', () => {
+  const source = fs.readFileSync('background.js', 'utf8');
+
+  assert.match(source, /const REGISTERED_STEP_FLOW_IDS = self\.MultiPageStepDefinitions\?\.getRegisteredFlowIds\?\.\(\)/);
+  assert.match(source, /for \(const flowId of REGISTERED_STEP_FLOW_IDS\)/);
+  assert.match(source, /getAllSteps\(\{ activeFlowId: flowId \}\)/);
+});
+
 test('background no longer wires removed payment executors or OTP helpers', () => {
   const source = fs.readFileSync('background.js', 'utf8');
   assert.doesNotMatch(source, /create[A-Z][A-Za-z]+ApproveExecutor\(\{[\s\S]*request[A-Z][A-Za-z]+OtpInput/);

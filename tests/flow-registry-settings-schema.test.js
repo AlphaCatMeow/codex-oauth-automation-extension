@@ -158,7 +158,6 @@ test('settings schema normalizes view input into canonical nested namespaces', (
     ipProxyEnabled: true,
     ipProxyService: '711proxy',
     customPassword: 'SharedSecret123!',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
     kiroRsUrl: 'https://kiro.example.com/admin',
     kiroRsKey: 'secret-key',
     openaiWebchatUrl: ' https://webchat.example.com/admin ',
@@ -178,7 +177,8 @@ test('settings schema normalizes view input into canonical nested namespaces', (
   assert.equal(normalized.services.proxy.enabled, true);
   assert.equal(normalized.services.account.customPassword, 'SharedSecret123!');
   assert.equal(normalized.flows.openai.selectedTargetId, 'cpa');
-  assert.equal(normalized.flows.openai.plus.plusAccountAccessStrategy, 'sub2api_codex_session');
+  assert.equal(normalized.flows.openai.targets.cpa.accountDeliveryMode, 'oauth');
+  assert.equal(Object.hasOwn(normalized.flows.openai.plus, 'plusAccountAccessStrategy'), false);
   assert.equal(normalized.flows.openai.targets.webchat.baseUrl, 'https://webchat.example.com/admin');
   assert.equal(normalized.flows.openai.targets.webchat.apiKey, 'webchat-key');
   assert.equal(normalized.flows.openai.targets.chatgpt2api.baseUrl, 'https://chatgpt2api.example.com/admin');
@@ -460,7 +460,6 @@ test('settings schema can project canonical state into a read view without legac
     openaiWebchatUploadEnabled: true,
     openaiChatgpt2ApiUrl: 'https://chatgpt2api.example.com/admin',
     openaiChatgpt2ApiAdminKey: 'key-chatgpt2api',
-    plusAccountAccessStrategy: 'sub2api_codex_session',
   });
   const view = schema.buildSettingsView(normalized);
 
@@ -473,8 +472,9 @@ test('settings schema can project canonical state into a read view without legac
   assert.equal(view.openaiWebchatUploadEnabled, false);
   assert.equal(view.openaiChatgpt2ApiUrl, 'https://chatgpt2api.example.com/admin');
   assert.equal(view.openaiChatgpt2ApiAdminKey, 'key-chatgpt2api');
-  assert.equal(view.plusAccountAccessStrategy, 'sub2api_codex_session');
-  assert.equal(view.settingsSchemaVersion, 5);
+  assert.equal(view.accountDeliveryMode, 'oauth');
+  assert.equal(Object.hasOwn(view, 'plusAccountAccessStrategy'), false);
+  assert.equal(view.settingsSchemaVersion, 6);
   assert.equal(view.settingsState.activeFlowId, 'kiro');
   assert.deepEqual(view.stepExecutionRangeByFlow.grok, {
     enabled: false,
@@ -483,7 +483,7 @@ test('settings schema can project canonical state into a read view without legac
   });
 });
 
-test('settings schema preserves CPA session strategy in canonical state and read view', () => {
+test('settings schema migrates the legacy CPA session strategy into canonical account delivery state', () => {
   const { settingsSchema } = loadApis();
   const schema = settingsSchema.createSettingsSchema();
   const normalized = schema.normalizeSettingsState({
@@ -491,8 +491,10 @@ test('settings schema preserves CPA session strategy in canonical state and read
   });
   const view = schema.buildSettingsView(normalized);
 
-  assert.equal(normalized.flows.openai.plus.plusAccountAccessStrategy, 'cpa_codex_session');
-  assert.equal(view.plusAccountAccessStrategy, 'cpa_codex_session');
+  assert.equal(normalized.flows.openai.targets.cpa.accountDeliveryMode, 'session');
+  assert.equal(view.accountDeliveryMode, 'session');
+  assert.equal(Object.hasOwn(normalized.flows.openai.plus, 'plusAccountAccessStrategy'), false);
+  assert.equal(Object.hasOwn(view, 'plusAccountAccessStrategy'), false);
 });
 
 test('settings schema preserves registered custom flow settings without openai/kiro hardcoding', () => {

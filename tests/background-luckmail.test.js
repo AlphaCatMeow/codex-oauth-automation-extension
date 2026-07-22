@@ -483,6 +483,7 @@ return {
 test('buildPersistentSettingsPayload keeps LuckMail config fields for storage.local persistence', () => {
   const bundle = [
     extractFunction('normalizePersistentSettingValue'),
+    extractFunction('getSettingsSchemaLegacyMigrationStorageKeys'),
     extractFunction('buildPersistentSettingsPayload'),
   ].join('\n');
 

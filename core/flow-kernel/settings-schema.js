@@ -49,6 +49,7 @@
   function createSettingsSchema(deps = {}) {
     const rootScope = typeof self !== 'undefined' ? self : globalThis;
     const flowRegistry = deps.flowRegistry || rootScope.MultiPageFlowRegistry || {};
+    const accountDeliveryApi = deps.accountDelivery || rootScope.MultiPageOpenAiAccountDelivery || {};
     const defaultFlowId = String(
       deps.defaultFlowId || flowRegistry.DEFAULT_FLOW_ID || 'openai'
     ).trim().toLowerCase() || 'openai';
@@ -76,17 +77,21 @@
     const getTargetDefinitions = typeof flowRegistry.getTargetDefinitions === 'function'
       ? flowRegistry.getTargetDefinitions
       : (() => ({}));
+    const getTargetCapabilities = typeof flowRegistry.getTargetCapabilities === 'function'
+      ? flowRegistry.getTargetCapabilities
+      : ((_flowId, targetId) => getTargetDefinitions('openai')?.[targetId]?.capabilities || {});
+    const legacyMigrationStorageKeys = Object.freeze([
+      'plusAccountAccessStrategy',
+      'sub2apiImportMode',
+    ]);
 
-    const normalizePlusAccountAccessStrategy = (value = '') => {
-      const normalized = String(value || '').trim().toLowerCase();
-      if (normalized === 'sub2api_codex_session') {
-        return 'sub2api_codex_session';
-      }
-      if (normalized === 'cpa_codex_session') {
-        return 'cpa_codex_session';
-      }
-      return 'oauth';
-    };
+    function removeLegacyAccountDeliveryFields(value = {}) {
+      const next = isPlainObject(value) ? cloneValue(value) : {};
+      legacyMigrationStorageKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    }
 
     const normalizePlusPaymentMethod = (value = '') => {
       const normalized = String(value || '').trim().toLowerCase();
@@ -98,6 +103,101 @@
       }
       return 'paypal';
     };
+
+    function getSupportedAccountDeliveryModes(targetId = '') {
+      const capabilities = getTargetCapabilities('openai', targetId) || {};
+      const values = Array.isArray(capabilities.supportedAccountDeliveryModes)
+        ? capabilities.supportedAccountDeliveryModes
+        : ['oauth'];
+      const seen = new Set();
+      const modes = values
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => {
+          if (!value || seen.has(value)) {
+            return false;
+          }
+          if (
+            typeof accountDeliveryApi.isAccountDeliveryMode === 'function'
+            && !accountDeliveryApi.isAccountDeliveryMode(value)
+          ) {
+            return false;
+          }
+          seen.add(value);
+          return true;
+        });
+      return modes.length ? modes : ['oauth'];
+    }
+
+    function getDefaultAccountDeliveryMode(targetId = '') {
+      const supportedModes = getSupportedAccountDeliveryModes(targetId);
+      const configuredDefault = String(
+        getTargetCapabilities('openai', targetId)?.defaultAccountDeliveryMode || ''
+      ).trim().toLowerCase();
+      return supportedModes.includes(configuredDefault)
+        ? configuredDefault
+        : supportedModes[0];
+    }
+
+    function normalizeAccountDeliveryModeForTarget(targetId = '', value = '') {
+      const supportedModes = getSupportedAccountDeliveryModes(targetId);
+      const normalized = String(value || '').trim().toLowerCase();
+      return supportedModes.includes(normalized)
+        ? normalized
+        : getDefaultAccountDeliveryMode(targetId);
+    }
+
+    function getOwnValue(source = {}, key = '') {
+      return isPlainObject(source) && Object.prototype.hasOwnProperty.call(source, key)
+        ? source[key]
+        : undefined;
+    }
+
+    function resolveLegacyAccountDeliveryMode(targetId = '', input = {}, nested = {}, currentFlow = {}) {
+      const nestedOpenAi = isPlainObject(nested?.flows?.openai) ? nested.flows.openai : {};
+      const nestedTarget = isPlainObject(nestedOpenAi?.targets?.[targetId])
+        ? nestedOpenAi.targets[targetId]
+        : {};
+      const selectedTargetId = normalizeTargetId(
+        'openai',
+        currentFlow?.selectedTargetId,
+        defaultOpenAiTargetId
+      );
+      const canonicalValue = getOwnValue(nestedTarget, 'accountDeliveryMode')
+        ?? (selectedTargetId === targetId ? getOwnValue(input, 'accountDeliveryMode') : undefined);
+      if (canonicalValue !== undefined) {
+        return normalizeAccountDeliveryModeForTarget(targetId, canonicalValue);
+      }
+
+      const legacyImportMode = getOwnValue(input, 'sub2apiImportMode')
+        ?? getOwnValue(nestedOpenAi, 'sub2apiImportMode')
+        ?? getOwnValue(nestedOpenAi.plus, 'sub2apiImportMode');
+      if (legacyImportMode !== undefined) {
+        return targetId === 'sub2api'
+          && String(legacyImportMode || '').trim().toLowerCase() === 'agent_identity'
+          ? normalizeAccountDeliveryModeForTarget(targetId, 'agent_identity')
+          : getDefaultAccountDeliveryMode(targetId);
+      }
+
+      const legacyStrategy = getOwnValue(input, 'plusAccountAccessStrategy')
+        ?? getOwnValue(nestedOpenAi, 'plusAccountAccessStrategy')
+        ?? getOwnValue(nestedOpenAi.plus, 'plusAccountAccessStrategy');
+      if (legacyStrategy !== undefined) {
+        const normalizedStrategy = String(legacyStrategy || '').trim().toLowerCase();
+        if (targetId === 'sub2api' && normalizedStrategy === 'sub2api_codex_session') {
+          return normalizeAccountDeliveryModeForTarget(targetId, 'session');
+        }
+        if (targetId === 'cpa' && normalizedStrategy === 'cpa_codex_session') {
+          return normalizeAccountDeliveryModeForTarget(targetId, 'session');
+        }
+        return getDefaultAccountDeliveryMode(targetId);
+      }
+
+      return getDefaultAccountDeliveryMode(targetId);
+    }
+
+    function getLegacyMigrationStorageKeys() {
+      return [...legacyMigrationStorageKeys];
+    }
 
     const normalizeCustomMailHelperBaseUrl = (value = '') => {
       const fallback = 'http://127.0.0.1:17374';
@@ -206,7 +306,7 @@
 
     function buildDefaultSettingsState() {
       return {
-        schemaVersion: 5,
+        schemaVersion: 6,
         activeFlowId: defaultFlowId,
         ui: {
           language: 'auto',
@@ -333,7 +433,10 @@
     }
 
     function normalizeFlowTargetState(flowId, targetId, nested = {}, defaults = {}) {
-      const targetState = mergePlainObjects(defaults, nested);
+      const mergedTargetState = mergePlainObjects(defaults, nested);
+      const targetState = flowId === 'openai'
+        ? removeLegacyAccountDeliveryFields(mergedTargetState)
+        : mergedTargetState;
       if (flowId === 'openai' && targetId === 'cpa') {
         return {
           ...targetState,
@@ -435,7 +538,13 @@
         ?? defaults.activeFlowId,
         defaults.activeFlowId
       );
-      const mergedFlow = mergePlainObjects(defaults.flows?.[flowId] || buildDefaultFlowSettings(flowId), nestedFlow);
+      const mergedFlowState = mergePlainObjects(
+        defaults.flows?.[flowId] || buildDefaultFlowSettings(flowId),
+        nestedFlow
+      );
+      const mergedFlow = flowId === 'openai'
+        ? removeLegacyAccountDeliveryFields(mergedFlowState)
+        : mergedFlowState;
       const defaultTargetId = defaults.flows?.[flowId]?.selectedTargetId || getDefaultTargetId(flowId);
       const selectedTargetId = normalizeTargetId(
         flowId,
@@ -544,16 +653,35 @@
         baseUrl: input?.openaiChatgpt2ApiUrl ?? chatgpt2ApiCurrent.baseUrl,
         apiKey: input?.openaiChatgpt2ApiAdminKey ?? chatgpt2ApiCurrent.apiKey,
       };
+      const targetSources = {
+        cpa: cpaSource,
+        sub2api: sub2apiSource,
+        codex2api: codex2apiSource,
+        webchat: webchatSource,
+        chatgpt2api: chatgpt2ApiSource,
+      };
+      const targets = {
+        ...currentFlow.targets,
+      };
+      Object.entries(targetSources).forEach(([targetId, source]) => {
+        targets[targetId] = {
+          ...normalizeFlowTargetState(
+            'openai',
+            targetId,
+            source,
+            defaultOpenAiTargets[targetId] || {}
+          ),
+          accountDeliveryMode: resolveLegacyAccountDeliveryMode(
+            targetId,
+            input,
+            nested,
+            currentFlow
+          ),
+        };
+      });
       return {
         ...currentFlow,
-        targets: {
-          ...currentFlow.targets,
-          cpa: normalizeFlowTargetState('openai', 'cpa', cpaSource, defaultOpenAiTargets.cpa || {}),
-          sub2api: normalizeFlowTargetState('openai', 'sub2api', sub2apiSource, defaultOpenAiTargets.sub2api || {}),
-          codex2api: normalizeFlowTargetState('openai', 'codex2api', codex2apiSource, defaultOpenAiTargets.codex2api || {}),
-          webchat: normalizeFlowTargetState('openai', 'webchat', webchatSource, defaultOpenAiTargets.webchat || {}),
-          chatgpt2api: normalizeFlowTargetState('openai', 'chatgpt2api', chatgpt2ApiSource, defaultOpenAiTargets.chatgpt2api || {}),
-        },
+        targets,
         signup: {
           signupMethod: String(
             input?.signupMethod
@@ -581,12 +709,6 @@
             ?? currentFlow.plus?.plusPaymentMethod
             ?? defaultOpenAiPlus.plusPaymentMethod
             ?? 'paypal'
-          ),
-          plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(
-            input?.plusAccountAccessStrategy
-            ?? currentFlow.plus?.plusAccountAccessStrategy
-            ?? defaultOpenAiPlus.plusAccountAccessStrategy
-            ?? 'oauth'
           ),
           hostedCheckoutVerificationUrl: String(
             input?.hostedCheckoutVerificationUrl
@@ -705,7 +827,7 @@
         defaults.activeFlowId
       );
       const normalized = {
-        schemaVersion: Number(input?.settingsSchemaVersion || nested?.schemaVersion || defaults.schemaVersion) || defaults.schemaVersion,
+        schemaVersion: defaults.schemaVersion,
         activeFlowId,
         ui: {
           language: rootScope.FlowPilotI18n?.normalizeLanguageSetting
@@ -836,6 +958,9 @@
       const next = {
         ...(isPlainObject(baseInput) ? cloneValue(baseInput) : {}),
       };
+      legacyMigrationStorageKeys.forEach((key) => {
+        delete next[key];
+      });
       const openaiState = normalizedState.flows.openai || buildDefaultFlowSettings('openai');
       const kiroState = normalizedState.flows.kiro || buildDefaultFlowSettings('kiro');
       const grokState = normalizedState.flows.grok || buildDefaultFlowSettings('grok');
@@ -865,7 +990,11 @@
       next.phoneSignupReloginAfterBindEmailEnabled = Boolean(openaiState.signup?.phoneSignupReloginAfterBindEmailEnabled);
       next.plusModeEnabled = false;
       next.plusPaymentMethod = normalizePlusPaymentMethod(openaiState.plus?.plusPaymentMethod || 'paypal');
-      next.plusAccountAccessStrategy = openaiState.plus?.plusAccountAccessStrategy || 'oauth';
+      const selectedOpenAiTargetId = getSelectedTargetId(normalizedState, 'openai');
+      next.accountDeliveryMode = normalizeAccountDeliveryModeForTarget(
+        selectedOpenAiTargetId,
+        openaiState.targets?.[selectedOpenAiTargetId]?.accountDeliveryMode
+      );
       next.hostedCheckoutVerificationUrl = openaiState.plus?.hostedCheckoutVerificationUrl || '';
       next.hostedCheckoutPhoneNumber = openaiState.plus?.hostedCheckoutPhoneNumber || '';
       next.plusHostedCheckoutOauthDelaySeconds = openaiState.plus?.plusHostedCheckoutOauthDelaySeconds ?? 3;
@@ -907,6 +1036,17 @@
           kiroRsKey: targetSettings.apiKey || '',
         };
       }
+      if (normalizedFlowId === 'openai') {
+        const targetSettings = getTargetSettings(normalizedState, normalizedFlowId, targetId);
+        return {
+          activeFlowId: normalizedFlowId,
+          targetId,
+          accountDeliveryMode: normalizeAccountDeliveryModeForTarget(
+            targetId,
+            targetSettings.accountDeliveryMode
+          ),
+        };
+      }
       return {
         activeFlowId: normalizedFlowId,
         targetId,
@@ -919,6 +1059,7 @@
       buildStepExecutionRangeByFlow,
       getFlowInputState,
       getFlowSettings,
+      getLegacyMigrationStorageKeys,
       getSelectedTargetId,
       getTargetSettings,
       mergeSettingsState,

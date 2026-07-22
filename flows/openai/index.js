@@ -128,7 +128,6 @@
     "plus": {
       "plusModeEnabled": false,
       "plusPaymentMethod": "paypal",
-      "plusAccountAccessStrategy": "oauth",
       "hostedCheckoutVerificationUrl": "",
       "hostedCheckoutPhoneNumber": "",
       "plusHostedCheckoutOauthDelaySeconds": 3
@@ -558,11 +557,7 @@
       "accountDeliveryRouteByMode": {
         "oauth": "oauth",
         "session": "cpa-session"
-      },
-      "supportedPlusAccountAccessStrategies": [
-        "oauth",
-        "cpa_codex_session"
-      ]
+      }
     },
     "sub2api": {
       "supportsPhoneSignup": true,
@@ -577,11 +572,7 @@
         "oauth": "oauth",
         "session": "sub2api-session",
         "agent_identity": "sub2api-agent-identity"
-      },
-      "supportedPlusAccountAccessStrategies": [
-        "oauth",
-        "sub2api_codex_session"
-      ]
+      }
     },
     "codex2api": {
       "supportsPhoneSignup": true,
@@ -592,10 +583,7 @@
       "defaultAccountDeliveryMode": "oauth",
       "accountDeliveryRouteByMode": {
         "oauth": "oauth"
-      },
-      "supportedPlusAccountAccessStrategies": [
-        "oauth"
-      ]
+      }
     },
     "webchat": {
       "supportsPhoneSignup": false,
@@ -607,10 +595,7 @@
       "defaultAccountDeliveryMode": "session",
       "accountDeliveryRouteByMode": {
         "session": "webchat-session"
-      },
-      "supportedPlusAccountAccessStrategies": [
-        "oauth"
-      ]
+      }
     },
     "chatgpt2api": {
       "supportsPhoneSignup": false,
@@ -622,10 +607,7 @@
       "defaultAccountDeliveryMode": "session",
       "accountDeliveryRouteByMode": {
         "session": "chatgpt2api-session"
-      },
-      "supportedPlusAccountAccessStrategies": [
-        "oauth"
-      ]
+      }
     }
   }
 });

@@ -113,7 +113,7 @@ const SETTINGS_SCHEMA_VIEW_KEYS = Object.freeze([
   'phoneSignupReloginAfterBindEmailEnabled',
   'plusModeEnabled',
   'plusPaymentMethod',
-  'plusAccountAccessStrategy',
+  'accountDeliveryMode',
   'mailProvider',
   'customMailReceiveMode',
   'customMailHelperBaseUrl',
@@ -139,7 +139,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   signupMethod: 'email',
   plusModeEnabled: false,
   plusPaymentMethod: 'paypal',
-  plusAccountAccessStrategy: 'oauth',
+  accountDeliveryMode: 'oauth',
   phoneVerificationEnabled: false,
   mailProvider: '163',
   customMailReceiveMode: 'manual',
@@ -185,10 +185,6 @@ const PERSISTED_SETTINGS_SCHEMA_KEYS = ['settingsSchemaVersion', 'settingsState'
 const LEGACY_AUTO_STEP_DELAY_KEYS = [];
 const LEGACY_VERIFICATION_RESEND_COUNT_KEYS = [];
 const LEGACY_GROK_SUB2API_UPLOAD_KEYS = ['grokSub2apiWebchat2ApiUploadEnabled'];
-const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-const DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY = PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 function isPlainObjectValue(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -203,7 +199,6 @@ function normalizePlusPaymentMethod(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === 'paypal-hosted' || normalized === 'none' ? normalized : 'paypal';
 }
-${extractFunction('normalizePlusAccountAccessStrategy')}
 function normalizeSub2ApiGroupNames(value) {
   return Array.isArray(value) ? value.map((entry) => String(entry || '').trim()).filter(Boolean) : [];
 }
@@ -333,6 +328,7 @@ function resolveSignupMethod(state = {}) {
 function resolveLegacyAutoStepDelaySeconds() { return undefined; }
 ${extractFunction('normalizePersistentSettingValue')}
 ${extractFunction('getSettingsSchemaApi')}
+${extractFunction('getSettingsSchemaLegacyMigrationStorageKeys')}
 ${extractFunction('projectSettingsSchemaView')}
 ${extractFunction('setSettingsStatePatchValue')}
 ${extractFunction('mergeSettingsStatePatch')}
@@ -385,7 +381,7 @@ test('buildPersistentSettingsPayload writes canonical settings schema into persi
   assert.equal(payload.madaoAutoPickCountry, true);
   assert.equal(payload.madaoReusePhone, true);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'kiroRegion'), false);
-  assert.equal(payload.settingsSchemaVersion, 5);
+  assert.equal(payload.settingsSchemaVersion, 6);
   assert.equal(payload.settingsState.activeFlowId, 'kiro');
   assert.equal(payload.settingsState.ui.language, 'en-US');
   assert.equal(payload.settingsState.flows.kiro.selectedTargetId, 'kiro-rs');
@@ -462,7 +458,6 @@ test('buildPersistentSettingsPayload accepts schema-only input when requireKnown
           plus: {
             plusModeEnabled: false,
             plusPaymentMethod: 'paypal',
-            plusAccountAccessStrategy: 'oauth',
           },
           autoRun: {
             stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },
@@ -490,9 +485,10 @@ test('buildPersistentSettingsPayload accepts schema-only input when requireKnown
   assert.equal(payload.kiroRsUrl, 'https://kiro.example.com/admin');
   assert.equal(payload.kiroRsKey, 'schema-only-key');
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'kiroRegion'), false);
-  assert.equal(payload.settingsSchemaVersion, 5);
+  assert.equal(payload.settingsSchemaVersion, 6);
   assert.equal(payload.settingsState.ui.language, 'en-US');
-  assert.equal(payload.settingsState.flows.openai.plus.plusAccountAccessStrategy, 'oauth');
+  assert.equal(payload.settingsState.flows.openai.targets.cpa.accountDeliveryMode, 'oauth');
+  assert.equal(Object.hasOwn(payload.settingsState.flows.openai.plus, 'plusAccountAccessStrategy'), false);
 });
 
 test('getPersistedSettings reads schema keys alongside legacy flat settings keys', async () => {
@@ -518,7 +514,7 @@ function getRequestedKeys() {
   assert.ok(api.getRequestedKeys().includes('settingsSchemaVersion'));
   assert.ok(api.getRequestedKeys().includes('settingsState'));
   assert.ok(api.getRequestedKeys().includes('plusAccountAccessStrategy'));
-  assert.equal(state.settingsSchemaVersion, 5);
+  assert.equal(state.settingsSchemaVersion, 6);
   assert.equal(state.settingsState.activeFlowId, 'openai');
   assert.ok(api.getRequestedKeys().includes('madaoBaseUrl'));
   assert.ok(api.getRequestedKeys().includes('madaoMode'));
@@ -631,7 +627,12 @@ const chrome = {
   assert.equal(state.ipProxyEnabled, true);
   assert.equal(state.kiroRsUrl, 'https://kiro.example.com/admin');
   assert.equal(state.kiroRsKey, 'stored-key');
-  assert.equal(state.plusAccountAccessStrategy, 'sub2api_codex_session');
+  assert.equal(state.accountDeliveryMode, 'session');
+  assert.equal(
+    state.settingsState.flows.openai.targets.sub2api.accountDeliveryMode,
+    'session'
+  );
+  assert.equal(Object.hasOwn(state, 'plusAccountAccessStrategy'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(state, 'kiroRegion'), false);
   assert.deepEqual(state.stepExecutionRangeByFlow.kiro, {
     enabled: true,
@@ -693,6 +694,7 @@ function getRemovedKeys() {
               sub2apiGroupNames: ['codex', 'openai-plus'],
               sub2apiAccountPriority: 1,
               sub2apiDefaultProxyName: '',
+              accountDeliveryMode: 'session',
             },
             codex2api: {
               codex2apiUrl: '',
@@ -707,7 +709,6 @@ function getRemovedKeys() {
           plus: {
             plusModeEnabled: false,
             plusPaymentMethod: 'paypal',
-            plusAccountAccessStrategy: 'sub2api_codex_session',
           },
           autoRun: {
             stepExecutionRange: { enabled: false, fromStep: 1, toStep: 11 },
@@ -735,16 +736,22 @@ function getRemovedKeys() {
   assert.equal(persisted.targetId, 'kiro-rs');
   assert.equal(persisted.kiroRsUrl, 'https://kiro.example.com/admin');
   assert.equal(persisted.kiroRsKey, 'nested-only-key');
-  assert.equal(persisted.plusAccountAccessStrategy, 'sub2api_codex_session');
+  assert.equal(persisted.accountDeliveryMode, 'oauth');
+  assert.equal(
+    persisted.settingsState.flows.openai.targets.sub2api.accountDeliveryMode,
+    'session'
+  );
+  assert.equal(Object.hasOwn(persisted, 'plusAccountAccessStrategy'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'kiroRegion'), false);
-  assert.equal(persisted.settingsSchemaVersion, 5);
+  assert.equal(persisted.settingsSchemaVersion, 6);
   assert.equal(Object.prototype.hasOwnProperty.call(write, 'activeFlowId'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(write, 'kiroRsUrl'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(write, 'kiroRsKey'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(write, 'kiroRegion'), false);
-  assert.equal(write.settingsSchemaVersion, 5);
+  assert.equal(write.settingsSchemaVersion, 6);
   assert.equal(write.settingsState.activeFlowId, 'kiro');
-  assert.equal(write.settingsState.flows.openai.plus.plusAccountAccessStrategy, 'sub2api_codex_session');
+  assert.equal(write.settingsState.flows.openai.targets.sub2api.accountDeliveryMode, 'session');
+  assert.equal(Object.hasOwn(write.settingsState.flows.openai.plus, 'plusAccountAccessStrategy'), false);
   assert.equal(write.settingsState.flows.kiro.selectedTargetId, 'kiro-rs');
   assert.ok(api.getRemovedKeys().includes('kiroRsUrl'));
 });

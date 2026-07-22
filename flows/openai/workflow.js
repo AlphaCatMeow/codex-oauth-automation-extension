@@ -1,3 +1,10 @@
+/*
+ * @Author: QLHazycoder
+ * @Date: 2026-07-22 00:00:00
+ * @LastEditors: QLHazycoder
+ * @LastEditTime: 2026-07-22 00:00:00
+ * @Description: OpenAI registration, payment, and account-delivery workflow composition.
+ */
 (function attachMultiPageOpenAiWorkflow(root, factory) {
   root.MultiPageOpenAiWorkflow = factory();
 })(typeof self !== 'undefined' ? self : globalThis, function createMultiPageOpenAiWorkflow() {
@@ -6,1959 +13,244 @@
   const PLUS_PAYMENT_METHOD_PAYPAL = 'paypal';
   const PLUS_PAYMENT_METHOD_PAYPAL_HOSTED = 'paypal-hosted';
   const PLUS_PAYMENT_METHOD_NONE = 'none';
-
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-  const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-  const PLUS_PAYMENT_STEP_KEY = 'paypal-approve';
-  const PLUS_REGISTRATION_WAIT_STEP_KEY = 'wait-registration-success';
-  const OPENAI_WEBCHAT_TARGET_ID = 'webchat';
-  const OPENAI_WEBCHAT_UPLOAD_STEP_KEY = 'openai-upload-session-to-webchat';
-  const OPENAI_CHATGPT2API_TARGET_ID = 'chatgpt2api';
-  const OPENAI_CHATGPT2API_UPLOAD_STEP_KEY = 'openai-upload-session-to-chatgpt2api';
+  const ACCOUNT_DELIVERY_MODE_OAUTH = 'oauth';
+  const ACCOUNT_DELIVERY_MODE_SESSION = 'session';
+  const ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY = 'agent_identity';
+  const OPENAI_TARGET_CPA = 'cpa';
+  const OPENAI_TARGET_SUB2API = 'sub2api';
+  const OPENAI_TARGET_CODEX2API = 'codex2api';
+  const OPENAI_TARGET_WEBCHAT = 'webchat';
+  const OPENAI_TARGET_CHATGPT2API = 'chatgpt2api';
 
   function freezeDeep(entry) {
     if (!entry || typeof entry !== 'object' || Object.isFrozen(entry)) {
       return entry;
     }
-    Object.getOwnPropertyNames(entry).forEach((key) => {
-      freezeDeep(entry[key]);
-    });
+    Object.getOwnPropertyNames(entry).forEach((key) => freezeDeep(entry[key]));
     return Object.freeze(entry);
   }
 
-  const STEP_VARIANTS_RAW = ({
-  "normal": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "wait-registration-success",
-      "title": "等待注册成功",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "wait-registration-success",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "post-login-phone-verification",
-      "title": "手机号验证",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "post-login-phone-verification",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "normalPhone": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "wait-registration-success",
-      "title": "等待注册成功",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "wait-registration-success",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "normalPhoneRelogin": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "wait-registration-success",
-      "title": "等待注册成功",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "wait-registration-success",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "relogin-bound-email",
-      "title": "绑定邮箱后刷新 OAuth 并登录（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "fetch-bound-email-login-code",
-      "title": "获取登录验证码（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "post-bound-email-phone-verification",
-      "title": "手机号验证",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "post-login-phone-verification",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 15,
-      "order": 150,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypal": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "plus-checkout-billing",
-      "title": "填写账单并提交订单",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-billing",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-approve",
-      "title": "PayPal 登录与授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-approve",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "plus-checkout-return",
-      "title": "订阅回跳确认",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-return",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "post-login-phone-verification",
-      "title": "手机号验证",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "post-login-phone-verification",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalSub2apiSession": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "plus-checkout-billing",
-      "title": "填写账单并提交订单",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-billing",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-approve",
-      "title": "PayPal 登录与授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-approve",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "plus-checkout-return",
-      "title": "订阅回跳确认",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-return",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "sub2api-session-import",
-      "title": "导入当前 ChatGPT 会话到 SUB2API",
-      "sourceId": "sub2api-panel",
-      "driverId": "flows/openai/background/steps/sub2api-session-import",
-      "command": "sub2api-session-import",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalCpaSession": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "plus-checkout-billing",
-      "title": "填写账单并提交订单",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-billing",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-approve",
-      "title": "PayPal 登录与授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-approve",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "plus-checkout-return",
-      "title": "订阅回跳确认",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-return",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "cpa-session-import",
-      "title": "导入当前 ChatGPT 会话到 CPA",
-      "sourceId": "vps-panel",
-      "driverId": "flows/openai/background/steps/cpa-session-import",
-      "command": "cpa-session-import",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalPhone": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "plus-checkout-billing",
-      "title": "填写账单并提交订单",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-billing",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-approve",
-      "title": "PayPal 登录与授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-approve",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "plus-checkout-return",
-      "title": "订阅回跳确认",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-return",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 15,
-      "order": 150,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalPhoneRelogin": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "plus-checkout-billing",
-      "title": "填写账单并提交订单",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-billing",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-approve",
-      "title": "PayPal 登录与授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-approve",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "plus-checkout-return",
-      "title": "订阅回跳确认",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-return",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "relogin-bound-email",
-      "title": "绑定邮箱后刷新 OAuth 并登录（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 15,
-      "order": 150,
-      "key": "fetch-bound-email-login-code",
-      "title": "获取登录验证码（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 16,
-      "order": 160,
-      "key": "post-bound-email-phone-verification",
-      "title": "手机号验证",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "post-login-phone-verification",
-      "flowId": "openai"
-    },
-    {
-      "id": 17,
-      "order": 170,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 18,
-      "order": 180,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalHosted": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "paypal-hosted-email",
-      "title": "无卡直绑填写 PayPal 邮箱",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-hosted-card",
-      "title": "无卡直绑填写 PayPal 资料",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-card",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "paypal-hosted-create-account",
-      "title": "无卡直绑确认创建 PayPal",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-create-account",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "paypal-hosted-review",
-      "title": "无卡直绑完成 PayPal 授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-review",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalHostedSub2apiSession": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "paypal-hosted-email",
-      "title": "无卡直绑填写 PayPal 邮箱",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-hosted-card",
-      "title": "无卡直绑填写 PayPal 资料",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-card",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "paypal-hosted-create-account",
-      "title": "无卡直绑确认创建 PayPal",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-create-account",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "paypal-hosted-review",
-      "title": "无卡直绑完成 PayPal 授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-review",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "sub2api-session-import",
-      "title": "导入当前 ChatGPT 会话到 SUB2API",
-      "sourceId": "sub2api-panel",
-      "driverId": "flows/openai/background/steps/sub2api-session-import",
-      "command": "sub2api-session-import",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalHostedCpaSession": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取注册验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "paypal-hosted-email",
-      "title": "无卡直绑填写 PayPal 邮箱",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-hosted-card",
-      "title": "无卡直绑填写 PayPal 资料",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-card",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "paypal-hosted-create-account",
-      "title": "无卡直绑确认创建 PayPal",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-create-account",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "paypal-hosted-review",
-      "title": "无卡直绑完成 PayPal 授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-review",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "cpa-session-import",
-      "title": "导入当前 ChatGPT 会话到 CPA",
-      "sourceId": "vps-panel",
-      "driverId": "flows/openai/background/steps/cpa-session-import",
-      "command": "cpa-session-import",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalHostedPhone": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "paypal-hosted-email",
-      "title": "无卡直绑填写 PayPal 邮箱",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-hosted-card",
-      "title": "无卡直绑填写 PayPal 资料",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-card",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "paypal-hosted-create-account",
-      "title": "无卡直绑确认创建 PayPal",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-create-account",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "paypal-hosted-review",
-      "title": "无卡直绑完成 PayPal 授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-review",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 15,
-      "order": 150,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 16,
-      "order": 160,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ],
-  "plusPaypalHostedPhoneRelogin": [
-    {
-      "id": 1,
-      "order": 10,
-      "key": "open-chatgpt",
-      "title": "打开 ChatGPT 官网",
-      "sourceId": "chatgpt",
-      "driverId": null,
-      "command": "open-chatgpt",
-      "flowId": "openai"
-    },
-    {
-      "id": 2,
-      "order": 20,
-      "key": "submit-signup-email",
-      "title": "注册并输入手机号",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-signup-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 3,
-      "order": 30,
-      "key": "fill-password",
-      "title": "填写密码并继续",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-password",
-      "flowId": "openai"
-    },
-    {
-      "id": 4,
-      "order": 40,
-      "key": "fetch-signup-code",
-      "title": "获取手机验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-signup-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 5,
-      "order": 50,
-      "key": "fill-profile",
-      "title": "填写姓名和生日",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fill-profile",
-      "flowId": "openai"
-    },
-    {
-      "id": 6,
-      "order": 60,
-      "key": "plus-checkout-create",
-      "title": "创建 Plus Checkout",
-      "sourceId": "plus-checkout",
-      "driverId": "flows/openai/content/plus-checkout",
-      "command": "plus-checkout-create",
-      "flowId": "openai"
-    },
-    {
-      "id": 7,
-      "order": 70,
-      "key": "paypal-hosted-email",
-      "title": "无卡直绑填写 PayPal 邮箱",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 8,
-      "order": 80,
-      "key": "paypal-hosted-card",
-      "title": "无卡直绑填写 PayPal 资料",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-card",
-      "flowId": "openai"
-    },
-    {
-      "id": 9,
-      "order": 90,
-      "key": "paypal-hosted-create-account",
-      "title": "无卡直绑确认创建 PayPal",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-create-account",
-      "flowId": "openai"
-    },
-    {
-      "id": 10,
-      "order": 100,
-      "key": "paypal-hosted-review",
-      "title": "无卡直绑完成 PayPal 授权",
-      "sourceId": "paypal-flow",
-      "driverId": "flows/openai/content/paypal-flow",
-      "command": "paypal-hosted-review",
-      "flowId": "openai"
-    },
-    {
-      "id": 11,
-      "order": 110,
-      "key": "oauth-login",
-      "title": "刷新 OAuth 并登录",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 12,
-      "order": 120,
-      "key": "fetch-login-code",
-      "title": "获取登录验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 13,
-      "order": 130,
-      "key": "bind-email",
-      "title": "绑定邮箱",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "bind-email",
-      "flowId": "openai"
-    },
-    {
-      "id": 14,
-      "order": 140,
-      "key": "fetch-bind-email-code",
-      "title": "获取绑定邮箱验证码",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "fetch-bind-email-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 15,
-      "order": 150,
-      "key": "relogin-bound-email",
-      "title": "绑定邮箱后刷新 OAuth 并登录（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "oauth-login",
-      "flowId": "openai"
-    },
-    {
-      "id": 16,
-      "order": 160,
-      "key": "fetch-bound-email-login-code",
-      "title": "获取登录验证码（邮箱）",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "submit-verification-code",
-      "mailRuleId": "openai-login-code",
-      "flowId": "openai"
-    },
-    {
-      "id": 17,
-      "order": 170,
-      "key": "confirm-oauth",
-      "title": "自动确认 OAuth",
-      "sourceId": "openai-auth",
-      "driverId": "flows/openai/content/openai-auth",
-      "command": "confirm-oauth",
-      "flowId": "openai"
-    },
-    {
-      "id": 18,
-      "order": 180,
-      "key": "platform-verify",
-      "title": "平台回调验证",
-      "sourceId": "platform-panel",
-      "driverId": "content/platform-panel",
-      "command": "platform-verify",
-      "flowId": "openai"
-    }
-  ]
-});
-
-  const STEP_VARIANTS = freezeDeep(STEP_VARIANTS_RAW);
-
-  const PLUS_PAYMENT_CHAIN_STEP_KEYS = Object.freeze([
-    'plus-checkout-create',
-    'plus-checkout-billing',
-    'paypal-approve',
-    'plus-checkout-return',
-    'paypal-hosted-email',
-    'paypal-hosted-card',
-    'paypal-hosted-create-account',
-    'paypal-hosted-review',
-
-  ]);
-  const POST_LOGIN_PHONE_VERIFICATION_STEP_KEYS = Object.freeze([
-    'post-login-phone-verification',
-    'post-bound-email-phone-verification',
-  ]);
-  const OPENAI_WEBCHAT_OMITTED_STEP_KEYS = Object.freeze([
-    'oauth-login',
-    'fetch-login-code',
-    'bind-email',
-    'fetch-bind-email-code',
-    'relogin-bound-email',
-    'fetch-bound-email-login-code',
-    'post-login-phone-verification',
-    'post-bound-email-phone-verification',
-    'confirm-oauth',
-    'platform-verify',
-  ]);
-
-  function omitPlusPaymentChainSteps(steps = []) {
-    return steps.filter((step) => !PLUS_PAYMENT_CHAIN_STEP_KEYS.includes(String(step?.key || '').trim()));
-  }
-
-  function omitPostLoginPhoneVerificationSteps(steps = []) {
-    return steps.filter((step) => !POST_LOGIN_PHONE_VERIFICATION_STEP_KEYS.includes(String(step?.key || '').trim()));
-  }
-
-  function omitOpenAiWebchatPublicationSteps(steps = []) {
-    return steps.filter((step) => !OPENAI_WEBCHAT_OMITTED_STEP_KEYS.includes(String(step?.key || '').trim()));
-  }
-
-  function reindexModeStepDefinitions(steps = []) {
-    return (Array.isArray(steps) ? steps : []).map((step, index) => ({
-      ...step,
-      id: index + 1,
-      order: (index + 1) * 10,
-    }));
-  }
-
-  function getOpenAiWebchatUploadStep() {
+  function createStep(key, title, options = {}) {
     return {
-      key: OPENAI_WEBCHAT_UPLOAD_STEP_KEY,
-      title: '上传 ChatGPT 会话到 webchat',
+      key,
+      title,
+      sourceId: options.sourceId || '',
+      driverId: options.driverId ?? null,
+      command: options.command || key,
+      ...(options.mailRuleId ? { mailRuleId: options.mailRuleId } : {}),
+      flowId: 'openai',
+    };
+  }
+
+  const REGISTRATION_STAGE_EMAIL = freezeDeep([
+    createStep('open-chatgpt', '打开 ChatGPT 官网', { sourceId: 'chatgpt' }),
+    createStep('submit-signup-email', '注册并输入邮箱', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('fill-password', '填写密码并继续', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('fetch-signup-code', '获取注册验证码', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'submit-verification-code',
+      mailRuleId: 'openai-signup-code',
+    }),
+    createStep('fill-profile', '填写姓名和生日', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('wait-registration-success', '等待注册成功', { sourceId: 'chatgpt' }),
+  ]);
+
+  const REGISTRATION_STAGE_PHONE = freezeDeep(REGISTRATION_STAGE_EMAIL.map((step) => (
+    step.key === 'submit-signup-email'
+      ? { ...step, title: '注册并输入手机号' }
+      : step.key === 'fetch-signup-code'
+        ? { ...step, title: '获取手机验证码' }
+        : step
+  )));
+
+  const OAUTH_DELIVERY_STAGE_EMAIL = freezeDeep([
+    createStep('oauth-login', '刷新 OAuth 并登录', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('fetch-login-code', '获取登录验证码', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'submit-verification-code',
+      mailRuleId: 'openai-login-code',
+    }),
+    createStep('post-login-phone-verification', '手机号验证', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'post-login-phone-verification',
+    }),
+    createStep('confirm-oauth', '自动确认 OAuth', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('platform-verify', '平台回调验证', {
+      sourceId: 'platform-panel',
+      driverId: 'content/platform-panel',
+    }),
+  ]);
+
+  const OAUTH_DELIVERY_STAGE_PHONE = freezeDeep([
+    createStep('oauth-login', '刷新 OAuth 并登录', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('fetch-login-code', '获取登录验证码', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'submit-verification-code',
+      mailRuleId: 'openai-login-code',
+    }),
+    createStep('bind-email', '绑定邮箱', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('fetch-bind-email-code', '获取绑定邮箱验证码', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      mailRuleId: 'openai-login-code',
+    }),
+    createStep('confirm-oauth', '自动确认 OAuth', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+    }),
+    createStep('platform-verify', '平台回调验证', {
+      sourceId: 'platform-panel',
+      driverId: 'content/platform-panel',
+    }),
+  ]);
+
+  const OAUTH_DELIVERY_STAGE_PHONE_RELOGIN = freezeDeep([
+    ...OAUTH_DELIVERY_STAGE_PHONE.slice(0, 4),
+    createStep('relogin-bound-email', '绑定邮箱后刷新 OAuth 并登录（邮箱）', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'oauth-login',
+    }),
+    createStep('fetch-bound-email-login-code', '获取登录验证码（邮箱）', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'submit-verification-code',
+      mailRuleId: 'openai-login-code',
+    }),
+    createStep('post-bound-email-phone-verification', '手机号验证', {
+      sourceId: 'openai-auth',
+      driverId: 'flows/openai/content/openai-auth',
+      command: 'post-login-phone-verification',
+    }),
+    ...OAUTH_DELIVERY_STAGE_PHONE.slice(-2),
+  ]);
+
+  const PAYMENT_STAGE_PAYPAL = freezeDeep([
+    createStep('plus-checkout-create', '创建 Plus Checkout', {
+      sourceId: 'plus-checkout',
+      driverId: 'flows/openai/content/plus-checkout',
+    }),
+    createStep('plus-checkout-billing', '填写账单并提交订单', {
+      sourceId: 'plus-checkout',
+      driverId: 'flows/openai/content/plus-checkout',
+    }),
+    createStep('paypal-approve', 'PayPal 登录与授权', {
+      sourceId: 'paypal-flow',
+      driverId: 'flows/openai/content/paypal-flow',
+    }),
+    createStep('plus-checkout-return', '订阅回跳确认', {
+      sourceId: 'plus-checkout',
+      driverId: 'flows/openai/content/plus-checkout',
+    }),
+  ]);
+
+  const PAYMENT_STAGE_HOSTED = freezeDeep([
+    createStep('plus-checkout-create', '创建 Plus Checkout', {
+      sourceId: 'plus-checkout',
+      driverId: 'flows/openai/content/plus-checkout',
+    }),
+    createStep('paypal-hosted-email', '无卡直绑填写 PayPal 邮箱', {
+      sourceId: 'paypal-flow',
+      driverId: 'flows/openai/content/paypal-flow',
+    }),
+    createStep('paypal-hosted-card', '无卡直绑填写 PayPal 资料', {
+      sourceId: 'paypal-flow',
+      driverId: 'flows/openai/content/paypal-flow',
+    }),
+    createStep('paypal-hosted-create-account', '无卡直绑确认创建 PayPal', {
+      sourceId: 'paypal-flow',
+      driverId: 'flows/openai/content/paypal-flow',
+    }),
+    createStep('paypal-hosted-review', '无卡直绑完成 PayPal 授权', {
+      sourceId: 'paypal-flow',
+      driverId: 'flows/openai/content/paypal-flow',
+    }),
+  ]);
+
+  const ACCOUNT_DELIVERY_STAGE_BY_ROUTE = freezeDeep({
+    oauth: OAUTH_DELIVERY_STAGE_EMAIL,
+    'cpa-session': [createStep('cpa-session-import', '导入 ChatGPT Session 到 CPA', {
+      sourceId: 'openai-session',
+      driverId: 'flows/openai/background/steps/cpa-session-import',
+    })],
+    'sub2api-session': [createStep('sub2api-session-import', '导入 ChatGPT Session 到 SUB2API', {
+      sourceId: 'openai-session',
+      driverId: 'flows/openai/background/steps/sub2api-session-import',
+    })],
+    'sub2api-agent-identity': [createStep('sub2api-agent-identity-import', '导入 Agent Identity 到 SUB2API', {
+      sourceId: 'openai-session',
+      driverId: 'flows/openai/background/steps/sub2api-agent-identity-import',
+    })],
+    'webchat-session': [createStep('openai-upload-session-to-webchat', '上传 ChatGPT 会话到 webchat', {
       sourceId: 'openai-webchat',
       driverId: 'flows/openai/background/publisher-webchat',
-      command: OPENAI_WEBCHAT_UPLOAD_STEP_KEY,
-      flowId: 'openai',
-    };
-  }
-
-  function getOpenAiChatgpt2ApiUploadStep() {
-    return {
-      key: OPENAI_CHATGPT2API_UPLOAD_STEP_KEY,
-      title: '上传 ChatGPT 会话到 ChatGPT2API',
+    })],
+    'chatgpt2api-session': [createStep('openai-upload-session-to-chatgpt2api', '上传 ChatGPT 会话到 ChatGPT2API', {
       sourceId: 'openai-chatgpt2api',
       driverId: 'flows/openai/background/publisher-chatgpt2api',
-      command: OPENAI_CHATGPT2API_UPLOAD_STEP_KEY,
-      flowId: 'openai',
-    };
+    })],
+  });
+
+  const TARGET_DELIVERY_ROUTES = freezeDeep({
+    [OPENAI_TARGET_CPA]: {
+      defaultMode: ACCOUNT_DELIVERY_MODE_OAUTH,
+      modes: { oauth: 'oauth', session: 'cpa-session' },
+    },
+    [OPENAI_TARGET_SUB2API]: {
+      defaultMode: ACCOUNT_DELIVERY_MODE_OAUTH,
+      modes: {
+        oauth: 'oauth',
+        session: 'sub2api-session',
+        agent_identity: 'sub2api-agent-identity',
+      },
+    },
+    [OPENAI_TARGET_CODEX2API]: {
+      defaultMode: ACCOUNT_DELIVERY_MODE_OAUTH,
+      modes: { oauth: 'oauth' },
+    },
+    [OPENAI_TARGET_WEBCHAT]: {
+      defaultMode: ACCOUNT_DELIVERY_MODE_SESSION,
+      modes: { session: 'webchat-session' },
+    },
+    [OPENAI_TARGET_CHATGPT2API]: {
+      defaultMode: ACCOUNT_DELIVERY_MODE_SESSION,
+      modes: { session: 'chatgpt2api-session' },
+    },
+  });
+
+  function cloneSteps(steps = []) {
+    return (Array.isArray(steps) ? steps : []).map((step) => ({ ...step }));
   }
 
-  function getPlusRegistrationWaitStep() {
-    const sourceStep = STEP_VARIANTS.normal.find((step) => step.key === PLUS_REGISTRATION_WAIT_STEP_KEY);
-    return {
-      ...(sourceStep || {
-        key: PLUS_REGISTRATION_WAIT_STEP_KEY,
-        title: '等待注册成功',
-        sourceId: 'chatgpt',
-        driverId: null,
-        command: PLUS_REGISTRATION_WAIT_STEP_KEY,
-        flowId: 'openai',
-      }),
-      id: 6,
-      order: 60,
-    };
-  }
-
-  function shiftPlusStepAfterRegistrationWait(step = {}) {
-    const nextStep = { ...step };
-    const id = Number(step.id);
-    const order = Number(step.order);
-    if (Number.isFinite(id)) {
-      nextStep.id = id + 1;
-    }
-    if (Number.isFinite(order)) {
-      nextStep.order = order + 10;
-    }
-    return nextStep;
-  }
-
-  function insertPlusRegistrationWaitStep(steps = []) {
-    if (!Array.isArray(steps) || steps.some((step) => step.key === PLUS_REGISTRATION_WAIT_STEP_KEY)) {
-      return steps;
-    }
-    const fillProfileIndex = steps.findIndex((step) => step.key === 'fill-profile');
-    if (fillProfileIndex < 0) {
-      return steps;
-    }
-    return steps.flatMap((step, index) => {
-      if (index < fillProfileIndex) {
-        return [step];
-      }
-      if (index === fillProfileIndex) {
-        return [step, getPlusRegistrationWaitStep()];
-      }
-      return [shiftPlusStepAfterRegistrationWait(step)];
-    });
-  }
-
-  function isPlusModeEnabled(options = {}) {
-    return Boolean(options?.plusModeEnabled || options?.plusMode);
+  function normalizeSignupMethod(value = '') {
+    return String(value || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE
+      ? SIGNUP_METHOD_PHONE
+      : SIGNUP_METHOD_EMAIL;
   }
 
   function normalizePlusPaymentMethod(value = '') {
@@ -1972,172 +264,139 @@
     return PLUS_PAYMENT_METHOD_PAYPAL;
   }
 
-  function normalizeSignupMethod(value = '') {
-    return String(value || '').trim().toLowerCase() === SIGNUP_METHOD_PHONE
-      ? SIGNUP_METHOD_PHONE
-      : SIGNUP_METHOD_EMAIL;
+  function isPlusModeEnabled(options = {}) {
+    return Boolean(options?.plusModeEnabled || options?.plusMode);
   }
 
-  function isPhoneSignupReloginAfterBindEmailEnabled(options = {}) {
-    return Boolean(options?.phoneSignupReloginAfterBindEmailEnabled);
-  }
-
-  function isPhoneVerificationEnabled(options = {}) {
-    if (Object.prototype.hasOwnProperty.call(options || {}, 'phoneVerificationEnabled')) {
-      return Boolean(options.phoneVerificationEnabled);
-    }
-    return true;
-  }
-
-  function isOpenAiWebchatUploadEnabled(options = {}) {
-    if (String(options?.targetId || '').trim().toLowerCase() === OPENAI_WEBCHAT_TARGET_ID) {
-      return true;
-    }
-    return false;
-  }
-
-  function isOpenAiWebchatTarget(options = {}) {
-    return String(options?.targetId || '').trim().toLowerCase() === OPENAI_WEBCHAT_TARGET_ID;
-  }
-
-  function isOpenAiChatgpt2ApiUploadEnabled(options = {}) {
-    return String(options?.targetId || '').trim().toLowerCase() === OPENAI_CHATGPT2API_TARGET_ID;
-  }
-
-  function isOpenAiChatgpt2ApiTarget(options = {}) {
-    return String(options?.targetId || '').trim().toLowerCase() === OPENAI_CHATGPT2API_TARGET_ID;
-  }
-
-  function isOpenAiRemotePublicationTarget(options = {}) {
-    return isOpenAiWebchatTarget(options) || isOpenAiChatgpt2ApiTarget(options);
-  }
-
-  function normalizePlusAccountAccessStrategy(value = '') {
+  function normalizeTargetId(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-    }
-    if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-      return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-    }
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
+    return TARGET_DELIVERY_ROUTES[normalized] ? normalized : OPENAI_TARGET_CPA;
   }
 
-  function resolveVariantKey(options = {}) {
+  function normalizeAccountDeliveryMode(value = '', targetId = OPENAI_TARGET_CPA) {
+    const target = TARGET_DELIVERY_ROUTES[normalizeTargetId(targetId)];
+    const normalized = String(value || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(target.modes, normalized)
+      ? normalized
+      : target.defaultMode;
+  }
+
+  function resolveAccountDeliveryRouteId(options = {}) {
+    const targetId = normalizeTargetId(options?.targetId);
+    const target = TARGET_DELIVERY_ROUTES[targetId];
+    const explicitRoute = String(options?.accountDeliveryRouteId || '').trim();
+    if (explicitRoute && Object.values(target.modes).includes(explicitRoute)) {
+      return explicitRoute;
+    }
+    const mode = normalizeAccountDeliveryMode(options?.accountDeliveryMode, targetId);
+    return target.modes[mode] || target.modes[target.defaultMode];
+  }
+
+  function buildRegistrationStage(options = {}) {
     const signupMethod = normalizeSignupMethod(options?.resolvedSignupMethod || options?.signupMethod);
-    const reloginAfterBindEmail = signupMethod === SIGNUP_METHOD_PHONE && isPhoneSignupReloginAfterBindEmailEnabled(options);
+    return signupMethod === SIGNUP_METHOD_PHONE
+      ? cloneSteps(REGISTRATION_STAGE_PHONE)
+      : cloneSteps(REGISTRATION_STAGE_EMAIL);
+  }
+
+  function buildPaymentStage(options = {}) {
     if (!isPlusModeEnabled(options)) {
-      if (signupMethod === SIGNUP_METHOD_PHONE) {
-        return reloginAfterBindEmail ? 'normalPhoneRelogin' : 'normalPhone';
-      }
-      return 'normal';
+      return [];
     }
-
-    const plusAccountAccessStrategy = normalizePlusAccountAccessStrategy(options?.plusAccountAccessStrategy);
     const paymentMethod = normalizePlusPaymentMethod(options?.plusPaymentMethod || options?.paymentMethod);
-    if (paymentMethod === PLUS_PAYMENT_METHOD_PAYPAL_HOSTED) {
+    if (paymentMethod === PLUS_PAYMENT_METHOD_NONE) {
+      return [];
+    }
+    return cloneSteps(paymentMethod === PLUS_PAYMENT_METHOD_PAYPAL_HOSTED
+      ? PAYMENT_STAGE_HOSTED
+      : PAYMENT_STAGE_PAYPAL);
+  }
+
+  function buildAccountDeliveryStage(options = {}) {
+    const targetId = normalizeTargetId(options?.targetId);
+    const routeId = resolveAccountDeliveryRouteId(options);
+    const routeSteps = ACCOUNT_DELIVERY_STAGE_BY_ROUTE[routeId];
+    if (routeId === 'oauth') {
+      const signupMethod = normalizeSignupMethod(options?.resolvedSignupMethod || options?.signupMethod);
       if (signupMethod === SIGNUP_METHOD_PHONE) {
-        return reloginAfterBindEmail ? 'plusPaypalHostedPhoneRelogin' : 'plusPaypalHostedPhone';
+        return cloneSteps(
+          options?.phoneSignupReloginAfterBindEmailEnabled
+            ? OAUTH_DELIVERY_STAGE_PHONE_RELOGIN
+            : OAUTH_DELIVERY_STAGE_PHONE
+        );
       }
-      if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-        return 'plusPaypalHostedSub2apiSession';
-      }
-      if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-        return 'plusPaypalHostedCpaSession';
-      }
-      return 'plusPaypalHosted';
     }
-
-    if (signupMethod === SIGNUP_METHOD_PHONE) {
-      return reloginAfterBindEmail ? 'plusPaypalPhoneRelogin' : 'plusPaypalPhone';
+    if (routeSteps) {
+      return cloneSteps(routeSteps);
     }
-    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-      return 'plusPaypalSub2apiSession';
-    }
-    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-      return 'plusPaypalCpaSession';
-    }
-    return 'plusPaypal';
+    const fallbackRoute = TARGET_DELIVERY_ROUTES[targetId].modes[ACCOUNT_DELIVERY_MODE_OAUTH]
+      || TARGET_DELIVERY_ROUTES[targetId].modes[TARGET_DELIVERY_ROUTES[targetId].defaultMode];
+    return cloneSteps(ACCOUNT_DELIVERY_STAGE_BY_ROUTE[fallbackRoute] || OAUTH_DELIVERY_STAGE_EMAIL);
   }
 
-  function getVariantStepDefinitions(variantKey) {
-    return Array.isArray(STEP_VARIANTS[variantKey]) ? STEP_VARIANTS[variantKey] : STEP_VARIANTS.normal;
+  function removePhoneVerificationSteps(steps = []) {
+    return steps.filter((step) => ![
+      'post-login-phone-verification',
+      'post-bound-email-phone-verification',
+    ].includes(step.key));
   }
 
-  function getModeStepDefinitions(options = {}) {
-    const isPlusMode = isPlusModeEnabled(options);
-    let steps = getVariantStepDefinitions(resolveVariantKey(options));
-    if (isPlusMode) {
-      steps = insertPlusRegistrationWaitStep(steps);
-    }
-    if (
-      isPlusMode
-      && normalizePlusPaymentMethod(options?.plusPaymentMethod || options?.paymentMethod) === PLUS_PAYMENT_METHOD_NONE
-    ) {
-      steps = omitPlusPaymentChainSteps(steps);
-    }
-    if (!isPhoneVerificationEnabled(options)) {
-      steps = omitPostLoginPhoneVerificationSteps(steps);
-    }
-    if (isOpenAiRemotePublicationTarget(options)) {
-      steps = omitOpenAiWebchatPublicationSteps(steps);
-    }
-    if (isOpenAiWebchatUploadEnabled(options) && !steps.some((step) => step.key === OPENAI_WEBCHAT_UPLOAD_STEP_KEY)) {
-      steps = [
-        ...steps,
-        getOpenAiWebchatUploadStep(),
-      ];
-    }
-    if (isOpenAiChatgpt2ApiUploadEnabled(options) && !steps.some((step) => step.key === OPENAI_CHATGPT2API_UPLOAD_STEP_KEY)) {
-      steps = [
-        ...steps,
-        getOpenAiChatgpt2ApiUploadStep(),
-      ];
+  function reindexModeStepDefinitions(steps = []) {
+    return steps.map((step, index) => ({
+      ...step,
+      id: index + 1,
+      order: (index + 1) * 10,
+      flowId: 'openai',
+    }));
+  }
+
+  function buildModeStepDefinitions(options = {}) {
+    const registration = buildRegistrationStage(options);
+    const payment = buildPaymentStage(options);
+    const delivery = buildAccountDeliveryStage(options);
+    let steps = [...registration, ...payment, ...delivery];
+    if (options?.phoneVerificationEnabled === false) {
+      steps = removePhoneVerificationSteps(steps);
     }
     return reindexModeStepDefinitions(steps);
   }
 
   function getAllSteps() {
+    const combinations = [
+      { targetId: OPENAI_TARGET_CPA, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_OAUTH },
+      { targetId: OPENAI_TARGET_CPA, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_SESSION },
+      { targetId: OPENAI_TARGET_SUB2API, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_SESSION },
+      { targetId: OPENAI_TARGET_SUB2API, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY },
+      { targetId: OPENAI_TARGET_CODEX2API, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_OAUTH },
+      { targetId: OPENAI_TARGET_WEBCHAT, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_SESSION },
+      { targetId: OPENAI_TARGET_CHATGPT2API, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_SESSION },
+      { targetId: OPENAI_TARGET_CPA, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_OAUTH, signupMethod: SIGNUP_METHOD_PHONE },
+      {
+        targetId: OPENAI_TARGET_CPA,
+        accountDeliveryMode: ACCOUNT_DELIVERY_MODE_OAUTH,
+        signupMethod: SIGNUP_METHOD_PHONE,
+        phoneSignupReloginAfterBindEmailEnabled: true,
+      },
+      { targetId: OPENAI_TARGET_CPA, accountDeliveryMode: ACCOUNT_DELIVERY_MODE_OAUTH, plusModeEnabled: true },
+      {
+        targetId: OPENAI_TARGET_SUB2API,
+        accountDeliveryMode: ACCOUNT_DELIVERY_MODE_AGENT_IDENTITY,
+        plusModeEnabled: true,
+        plusPaymentMethod: PLUS_PAYMENT_METHOD_PAYPAL_HOSTED,
+      },
+    ];
     const keyed = new Map();
-    Object.entries(STEP_VARIANTS).forEach(([variantKey, steps]) => {
-      const variantSteps = String(variantKey || '').startsWith('plus')
-        ? insertPlusRegistrationWaitStep(steps)
-        : steps;
-      reindexModeStepDefinitions(variantSteps).forEach((step) => {
-        keyed.set(`${step.id}:${step.key}`, step);
-      });
+    combinations.forEach((options) => {
+      buildModeStepDefinitions(options).forEach((step) => keyed.set(step.key, step));
     });
-    const uploadStep = reindexModeStepDefinitions([
-      ...STEP_VARIANTS.normal,
-      getOpenAiWebchatUploadStep(),
-    ]).at(-1);
-    if (uploadStep) {
-      keyed.set(`${uploadStep.id}:${uploadStep.key}`, uploadStep);
-    }
-    const chatgpt2ApiUploadStep = reindexModeStepDefinitions([
-      ...STEP_VARIANTS.normal,
-      getOpenAiChatgpt2ApiUploadStep(),
-    ]).at(-1);
-    if (chatgpt2ApiUploadStep) {
-      keyed.set(`${chatgpt2ApiUploadStep.id}:${chatgpt2ApiUploadStep.key}`, chatgpt2ApiUploadStep);
-    }
-    return Array.from(keyed.values()).sort((left, right) => {
-      const leftOrder = Number.isFinite(left.order) ? left.order : left.id;
-      const rightOrder = Number.isFinite(right.order) ? right.order : right.id;
-      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-      return left.id - right.id;
-    });
+    return reindexModeStepDefinitions(Array.from(keyed.values()));
   }
 
   function getPlusPaymentStepTitle(options = {}) {
     if (!isPlusModeEnabled(options)) {
       return '';
     }
-    const paymentStep = getModeStepDefinitions({
-      ...options,
-      plusModeEnabled: true,
-    }).find((step) => step.key === PLUS_PAYMENT_STEP_KEY);
-    return paymentStep?.title || '';
+    return buildPaymentStage(options)[0]?.title || '';
   }
 
   function resolveStepTitle(step = {}) {
@@ -2146,14 +405,16 @@
 
   return {
     flowId: 'openai',
+    buildAccountDeliveryStage,
+    buildPaymentStage,
+    buildRegistrationStage,
     getAllSteps,
-    getModeStepDefinitions,
+    getModeStepDefinitions: buildModeStepDefinitions,
     getPlusPaymentStepTitle,
-    getVariantStepDefinitions,
     isPlusModeEnabled,
     normalizePlusPaymentMethod,
-    normalizePlusAccountAccessStrategy,
     normalizeSignupMethod,
+    resolveAccountDeliveryRouteId,
     resolveStepTitle,
   };
 });

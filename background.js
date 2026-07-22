@@ -84,6 +84,8 @@ importScripts(
   'flows/openai/background/steps/paypal-approve.js',
   'flows/openai/background/steps/plus-return-confirm.js',
   'flows/openai/background/steps/sub2api-session-import.js',
+  'flows/openai/background/agent-identity.js',
+  'flows/openai/background/steps/sub2api-agent-identity-import.js',
   'flows/openai/background/steps/cpa-session-import.js',
   'flows/openai/background/steps/oauth-login.js',
   'flows/openai/background/steps/fetch-login-code.js',
@@ -104,85 +106,18 @@ importScripts(
 );
 
 const DEFAULT_ACTIVE_FLOW_ID = 'openai';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-const NORMAL_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+const getStepDefinitionsForOptions = (options = {}) => self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: false,
+  ...options,
 }) || [];
-const NORMAL_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: false,
-  signupMethod: 'phone',
-}) || NORMAL_STEP_DEFINITIONS;
-const NORMAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+const NORMAL_STEP_DEFINITIONS = getStepDefinitionsForOptions({ plusModeEnabled: false });
+const NORMAL_PHONE_STEP_DEFINITIONS = getStepDefinitionsForOptions({ plusModeEnabled: false, signupMethod: 'phone' });
+const NORMAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = getStepDefinitionsForOptions({
   plusModeEnabled: false,
   signupMethod: 'phone',
   phoneSignupReloginAfterBindEmailEnabled: true,
-}) || NORMAL_PHONE_STEP_DEFINITIONS;
-const PLUS_PAYPAL_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal',
-}) || NORMAL_STEP_DEFINITIONS;
-const PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal',
-  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
-}) || PLUS_PAYPAL_STEP_DEFINITIONS;
-const PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal',
-  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
-}) || PLUS_PAYPAL_STEP_DEFINITIONS;
-const PLUS_PAYPAL_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal',
-  signupMethod: 'phone',
-}) || PLUS_PAYPAL_STEP_DEFINITIONS;
-const PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal',
-  signupMethod: 'phone',
-  phoneSignupReloginAfterBindEmailEnabled: true,
-}) || PLUS_PAYPAL_PHONE_STEP_DEFINITIONS;
-const PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal-hosted',
-}) || PLUS_PAYPAL_STEP_DEFINITIONS;
-const PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal-hosted',
-  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
-}) || PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS;
-const PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal-hosted',
-  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
-}) || PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS;
-const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal-hosted',
-  signupMethod: 'phone',
-}) || PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS;
-const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
-  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-  plusModeEnabled: true,
-  plusPaymentMethod: 'paypal-hosted',
-  signupMethod: 'phone',
-  phoneSignupReloginAfterBindEmailEnabled: true,
-}) || PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS;
-const PLUS_STEP_DEFINITIONS = PLUS_PAYPAL_STEP_DEFINITIONS;
+});
+const PLUS_STEP_DEFINITIONS = getStepDefinitionsForOptions({ plusModeEnabled: true });
 const REGISTERED_STEP_FLOW_IDS = self.MultiPageStepDefinitions?.getRegisteredFlowIds?.() || [DEFAULT_ACTIVE_FLOW_ID];
 const ALL_STEP_DEFINITIONS = (() => {
   if (self.MultiPageStepDefinitions?.getAllSteps) {
@@ -199,21 +134,7 @@ const ALL_STEP_DEFINITIONS = (() => {
       return allDefinitions;
     }
   }
-  return [
-    ...NORMAL_STEP_DEFINITIONS,
-    ...NORMAL_PHONE_STEP_DEFINITIONS,
-    ...NORMAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_PHONE_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS,
-    ...PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
-  ];
+  return NORMAL_STEP_DEFINITIONS;
 })();
 const STEP_IDS = Array.from(new Set(ALL_STEP_DEFINITIONS
   .map((definition) => Number(definition?.id))
@@ -228,19 +149,13 @@ const NORMAL_STEP_IDS = NORMAL_STEP_DEFINITIONS
   .map((definition) => Number(definition?.id))
   .filter(Number.isFinite)
   .sort((left, right) => left - right);
-const PLUS_PAYPAL_STEP_IDS = PLUS_PAYPAL_STEP_DEFINITIONS
+const PLUS_STEP_IDS = PLUS_STEP_DEFINITIONS
   .map((definition) => Number(definition?.id))
   .filter(Number.isFinite)
   .sort((left, right) => left - right);
-const PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_IDS = PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS
-  .map((definition) => Number(definition?.id))
-  .filter(Number.isFinite)
-  .sort((left, right) => left - right);
-const PLUS_STEP_IDS = PLUS_PAYPAL_STEP_IDS;
 const LAST_STEP_ID = Math.max(
   NORMAL_STEP_IDS[NORMAL_STEP_IDS.length - 1] || 10,
-  PLUS_PAYPAL_STEP_IDS[PLUS_PAYPAL_STEP_IDS.length - 1] || 10,
-  PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_IDS[PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_IDS.length - 1] || 10
+  PLUS_STEP_IDS[PLUS_STEP_IDS.length - 1] || 10
 );
 const FINAL_OAUTH_CHAIN_START_STEP = 7;
 
@@ -848,19 +763,19 @@ function buildResolvedStepDefinitionState(state = {}) {
   const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID === 'string' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
   const requestedActiveFlowId = String(state?.activeFlowId || state?.flowId || '').trim().toLowerCase() || defaultFlowId;
   const requestedSignupMethod = getSignupMethodForStepDefinitions(state);
-  const plusModeEnabled = isPlusModeState(state);
   const plusPaymentMethod = normalizePlusPaymentMethod(state?.plusPaymentMethod);
   const capabilityState = typeof resolveCurrentFlowCapabilities === 'function'
     ? resolveCurrentFlowCapabilities({
       ...state,
       activeFlowId: requestedActiveFlowId,
       flowId: requestedActiveFlowId,
-      plusModeEnabled,
+      plusModeEnabled: false,
       plusPaymentMethod,
       signupMethod: requestedSignupMethod,
     }, {
       activeFlowId: requestedActiveFlowId,
       targetId: state?.targetId,
+      accountDeliveryMode: state?.accountDeliveryMode,
       signupMethod: requestedSignupMethod,
     })
     : null;
@@ -877,15 +792,12 @@ function buildResolvedStepDefinitionState(state = {}) {
     activeFlowId: resolvedActiveFlowId,
     flowId: resolvedActiveFlowId,
     targetId: stepDefinitionOptions.targetId || capabilityState?.effectiveTargetId || state?.targetId,
-    plusModeEnabled: stepDefinitionOptions.plusModeEnabled === undefined
-      ? plusModeEnabled
-      : Boolean(stepDefinitionOptions.plusModeEnabled),
+    accountDeliveryMode: stepDefinitionOptions.accountDeliveryMode
+      || capabilityState?.effectiveAccountDeliveryMode,
+    accountDeliveryRouteId: stepDefinitionOptions.accountDeliveryRouteId
+      || capabilityState?.effectiveAccountDeliveryRouteId,
+    plusModeEnabled: false,
     plusPaymentMethod,
-    plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(
-      stepDefinitionOptions.plusAccountAccessStrategy
-      ?? capabilityState?.effectivePlusAccountAccessStrategy
-      ?? state?.plusAccountAccessStrategy
-    ),
     signupMethod: resolvedSignupMethod,
     resolvedSignupMethod: resolvedSignupMethod,
     phoneSignupReloginAfterBindEmailEnabled: Boolean(state?.phoneSignupReloginAfterBindEmailEnabled),
@@ -904,31 +816,16 @@ function buildResolvedStepDefinitionState(state = {}) {
 function getStepDefinitionsForState(state = {}) {
   const resolvedState = buildResolvedStepDefinitionState(state);
   const rootScope = typeof self !== 'undefined' ? self : globalThis;
-  const applyPhoneVerificationStepVisibility = (definitions = []) => {
-    if (Boolean(resolvedState?.phoneVerificationEnabled)) {
-      return definitions;
-    }
-    const hiddenStepKeys = new Set([
-      'post-login-phone-verification',
-      'post-bound-email-phone-verification',
-    ]);
-    return (Array.isArray(definitions) ? definitions : [])
-      .filter((definition) => !hiddenStepKeys.has(String(definition?.key || '').trim()))
-      .map((definition, index) => ({
-        ...definition,
-        id: index + 1,
-        order: (index + 1) * 10,
-      }));
-  };
   if (rootScope.MultiPageStepDefinitions?.getSteps) {
     const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID === 'string' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
     const activeFlowId = String(resolvedState?.activeFlowId || '').trim().toLowerCase() || defaultFlowId;
     const definitions = rootScope.MultiPageStepDefinitions.getSteps({
       activeFlowId,
       targetId: resolvedState?.targetId,
-      plusModeEnabled: Boolean(resolvedState?.plusModeEnabled),
+      accountDeliveryMode: resolvedState?.accountDeliveryMode,
+      accountDeliveryRouteId: resolvedState?.accountDeliveryRouteId,
+      plusModeEnabled: false,
       plusPaymentMethod: normalizePlusPaymentMethod(resolvedState?.plusPaymentMethod),
-      plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(resolvedState?.plusAccountAccessStrategy),
       signupMethod: getSignupMethodForStepDefinitions(resolvedState),
       phoneVerificationEnabled: Boolean(resolvedState?.phoneVerificationEnabled),
       phoneSignupReloginAfterBindEmailEnabled: Boolean(resolvedState?.phoneSignupReloginAfterBindEmailEnabled),
@@ -942,39 +839,7 @@ function getStepDefinitionsForState(state = {}) {
   if (activeFlowId && activeFlowId !== DEFAULT_ACTIVE_FLOW_ID) {
     return [];
   }
-  if (!Boolean(resolvedState?.plusModeEnabled)) {
-    return applyPhoneVerificationStepVisibility(NORMAL_STEP_DEFINITIONS);
-  }
-  const paymentMethod = normalizePlusPaymentMethod(resolvedState?.plusPaymentMethod);
-  const signupMethod = getSignupMethodForStepDefinitions(resolvedState);
-  const plusAccountAccessStrategy = normalizePlusAccountAccessStrategy(resolvedState?.plusAccountAccessStrategy);
-  if (paymentMethod === PLUS_PAYMENT_METHOD_PAYPAL_HOSTED) {
-    if (signupMethod === SIGNUP_METHOD_PHONE) {
-      return applyPhoneVerificationStepVisibility(Boolean(resolvedState?.phoneSignupReloginAfterBindEmailEnabled)
-        ? PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS
-        : PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS);
-    }
-    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-      return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS);
-    }
-    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-      return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS);
-    }
-    return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS);
-  }
-  if (
-    signupMethod === SIGNUP_METHOD_EMAIL
-    && plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-  ) {
-    return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS);
-  }
-  if (
-    signupMethod === SIGNUP_METHOD_EMAIL
-    && plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-  ) {
-    return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS);
-  }
-  return applyPhoneVerificationStepVisibility(PLUS_PAYPAL_STEP_DEFINITIONS);
+  return NORMAL_STEP_DEFINITIONS;
 }
 
 function getStepIdsForState(state = {}) {
@@ -985,14 +850,7 @@ function getStepIdsForState(state = {}) {
       .filter(Number.isFinite)
       .sort((left, right) => left - right);
   }
-  if (!isPlusModeState(state)) {
-    return NORMAL_STEP_IDS;
-  }
-  const paymentMethod = normalizePlusPaymentMethod(state?.plusPaymentMethod);
-  if (paymentMethod === PLUS_PAYMENT_METHOD_PAYPAL_HOSTED) {
-    return PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_IDS;
-  }
-  return PLUS_PAYPAL_STEP_IDS;
+  return NORMAL_STEP_IDS;
 }
 
 function getLastStepIdForState(state = {}) {
@@ -1265,7 +1123,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   customPassword: '',
   plusModeEnabled: false,
   plusPaymentMethod: DEFAULT_PLUS_PAYMENT_METHOD,
-  plusAccountAccessStrategy: 'oauth',
+  accountDeliveryMode: 'oauth',
   hostedCheckoutVerificationUrl: '',
   hostedCheckoutPhoneNumber: '',
   plusHostedCheckoutOauthDelaySeconds: DEFAULT_PLUS_HOSTED_CHECKOUT_OAUTH_DELAY_SECONDS,
@@ -1419,7 +1277,7 @@ const SETTINGS_SCHEMA_VIEW_KEYS = Object.freeze([
   'phoneSignupReloginAfterBindEmailEnabled',
   'plusModeEnabled',
   'plusPaymentMethod',
-  'plusAccountAccessStrategy',
+  'accountDeliveryMode',
   'hostedCheckoutVerificationUrl',
   'hostedCheckoutPhoneNumber',
   'plusHostedCheckoutOauthDelaySeconds',
@@ -2012,17 +1870,6 @@ function normalizePlusPaymentMethod(value = '') {
     return paypalHostedValue;
   }
   return PLUS_PAYMENT_METHOD_PAYPAL;
-}
-
-function normalizePlusAccountAccessStrategy(value = '') {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-  }
-  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-  }
-  return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 }
 
 function normalizeFiveSimCountryId(value, fallback = FIVE_SIM_COUNTRY_ID) {
@@ -3310,8 +3157,10 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeSignupMethod(value);
     case 'plusPaymentMethod':
       return normalizePlusPaymentMethod(value);
-    case 'plusAccountAccessStrategy':
-      return normalizePlusAccountAccessStrategy(value);
+    case 'accountDeliveryMode':
+      return self.MultiPageOpenAiAccountDelivery?.normalizeAccountDeliveryMode?.(value, 'oauth')
+        || String(value || '').trim().toLowerCase()
+        || 'oauth';
     case 'hostedCheckoutVerificationUrl':
       return String(value || '').trim();
     case 'hostedCheckoutPhoneNumber':
@@ -3339,8 +3188,9 @@ function normalizePersistentSettingValue(key, value) {
     case 'phoneSmsReuseEnabled':
     case 'freePhoneReuseEnabled':
     case 'freePhoneReuseAutoEnabled':
-    case 'plusModeEnabled':
       return Boolean(value);
+    case 'plusModeEnabled':
+      return false;
     case 'phoneSmsProvider':
       return normalizePhoneSmsProvider(value);
     case 'phoneSmsProviderOrder':
@@ -3560,6 +3410,10 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
   const persistedSettingKeys = Array.isArray(typeof PERSISTED_SETTING_KEYS !== 'undefined' ? PERSISTED_SETTING_KEYS : null)
     ? PERSISTED_SETTING_KEYS
     : Object.keys(persistedSettingDefaults);
+  const settingsSchemaApi = typeof getSettingsSchemaApi === 'function'
+    ? getSettingsSchemaApi()
+    : null;
+  const legacyMigrationStorageKeys = getSettingsSchemaLegacyMigrationStorageKeys(settingsSchemaApi);
 
   const normalizedInput = { ...input };
   if (
@@ -3615,7 +3469,15 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
       payload.heroSmsReuseEnabled = normalizedReuseEnabled;
   }
 
-  if (requireKnownKeys && matchedKeyCount === 0 && !hasExplicitSettingsState) {
+  const matchedLegacyMigrationKeyCount = legacyMigrationStorageKeys.filter((key) => (
+    Object.prototype.hasOwnProperty.call(normalizedInput, key)
+  )).length;
+  if (
+    requireKnownKeys
+    && matchedKeyCount === 0
+    && matchedLegacyMigrationKeyCount === 0
+    && !hasExplicitSettingsState
+  ) {
     throw new Error('\u914d\u7f6e\u6587\u4ef6\u4e2d\u6ca1\u6709\u53ef\u8bc6\u522b\u7684\u914d\u7f6e\u5185\u5bb9\u3002');
   }
 
@@ -3699,14 +3561,16 @@ function buildPersistentSettingsPayload(input = {}, options = {}) {
   const hasExplicitSettingsSchema = hasExplicitSettingsState
     || Object.prototype.hasOwnProperty.call(normalizedInput, 'settingsSchemaVersion');
   if (fillDefaults || hasExplicitSettingsSchema) {
-    const settingsSchemaApi = typeof getSettingsSchemaApi === 'function'
-      ? getSettingsSchemaApi()
-      : null;
     if (settingsSchemaApi?.normalizeSettingsState && settingsSchemaApi?.buildSettingsView) {
       const settingsSchemaInput = {};
       for (const key of persistedSettingKeys) {
         if (normalizedInput[key] !== undefined) {
           settingsSchemaInput[key] = payload[key];
+        }
+      }
+      for (const key of legacyMigrationStorageKeys) {
+        if (Object.prototype.hasOwnProperty.call(normalizedInput, key)) {
+          settingsSchemaInput[key] = normalizedInput[key];
         }
       }
       Object.assign(payload, projectSettingsSchemaView(settingsSchemaApi, {
@@ -3732,6 +3596,15 @@ function getSettingsSchemaApi() {
     flowRegistry: self.MultiPageFlowRegistry,
     defaultFlowId: DEFAULT_ACTIVE_FLOW_ID,
   });
+}
+
+function getSettingsSchemaLegacyMigrationStorageKeys(settingsSchemaApi = null) {
+  const api = settingsSchemaApi || (typeof getSettingsSchemaApi === 'function' ? getSettingsSchemaApi() : null);
+  const keys = api?.getLegacyMigrationStorageKeys?.();
+  if (!Array.isArray(keys)) {
+    return [];
+  }
+  return Array.from(new Set(keys.map((key) => String(key || '').trim()).filter(Boolean)));
 }
 
 function projectSettingsSchemaView(settingsSchemaApi, normalizedInput = {}, payload = {}) {
@@ -3784,6 +3657,12 @@ function buildSettingsStatePatchFromFlatUpdates(updates = {}) {
     const normalized = String(value || '').trim().toLowerCase();
     return normalized || String(fallback || DEFAULT_ACTIVE_FLOW_ID).trim().toLowerCase() || DEFAULT_ACTIVE_FLOW_ID;
   };
+  const normalizePatchTargetId = (flowId, value = '', fallback = '') => {
+    if (typeof self.MultiPageFlowRegistry?.normalizeTargetId === 'function') {
+      return self.MultiPageFlowRegistry.normalizeTargetId(flowId, value, fallback);
+    }
+    return String(value || fallback || '').trim().toLowerCase();
+  };
   const assignIfUpdated = (key, path) => {
     if (hasUpdate(key)) {
       setSettingsStatePatchValue(patch, path, updates[key]);
@@ -3835,9 +3714,22 @@ function buildSettingsStatePatchFromFlatUpdates(updates = {}) {
   assignIfUpdated('signupMethod', ['flows', 'openai', 'signup', 'signupMethod']);
   assignIfUpdated('phoneVerificationEnabled', ['flows', 'openai', 'signup', 'phoneVerificationEnabled']);
   assignIfUpdated('phoneSignupReloginAfterBindEmailEnabled', ['flows', 'openai', 'signup', 'phoneSignupReloginAfterBindEmailEnabled']);
-  assignIfUpdated('plusModeEnabled', ['flows', 'openai', 'plus', 'plusModeEnabled']);
+  if (hasUpdate('plusModeEnabled')) {
+    setSettingsStatePatchValue(patch, ['flows', 'openai', 'plus', 'plusModeEnabled'], false);
+  }
   assignIfUpdated('plusPaymentMethod', ['flows', 'openai', 'plus', 'plusPaymentMethod']);
-  assignIfUpdated('plusAccountAccessStrategy', ['flows', 'openai', 'plus', 'plusAccountAccessStrategy']);
+  if (
+    hasUpdate('accountDeliveryMode')
+    && hasUpdate('targetId')
+    && String(updates.targetId || '').trim()
+  ) {
+    const targetId = normalizePatchTargetId('openai', updates.targetId, 'cpa');
+    setSettingsStatePatchValue(
+      patch,
+      ['flows', 'openai', 'targets', targetId, 'accountDeliveryMode'],
+      updates.accountDeliveryMode
+    );
+  }
   assignIfUpdated('mailProvider', ['services', 'email', 'provider']);
   assignIfUpdated('customMailReceiveMode', ['services', 'email', 'customReceiveMode']);
   assignIfUpdated('customMailHelperBaseUrl', ['services', 'email', 'customHelperBaseUrl']);
@@ -3898,9 +3790,13 @@ function buildPersistedSettingsStoragePayload(payload = {}) {
 }
 
 async function getPersistedSettings() {
+  const settingsSchemaApi = typeof getSettingsSchemaApi === 'function'
+    ? getSettingsSchemaApi()
+    : null;
   const stored = await chrome.storage.local.get([
     ...PERSISTED_SETTING_KEYS,
     ...PERSISTED_SETTINGS_SCHEMA_KEYS,
+    ...getSettingsSchemaLegacyMigrationStorageKeys(settingsSchemaApi),
     ...LEGACY_AUTO_STEP_DELAY_KEYS,
     ...LEGACY_VERIFICATION_RESEND_COUNT_KEYS,
     ...LEGACY_GROK_SUB2API_UPLOAD_KEYS,
@@ -4229,6 +4125,7 @@ async function setPersistentSettings(updates, options = {}) {
   const settingsSchemaApi = typeof getSettingsSchemaApi === 'function'
     ? getSettingsSchemaApi()
     : null;
+  const legacyMigrationStorageKeys = getSettingsSchemaLegacyMigrationStorageKeys(settingsSchemaApi);
   const hasSchemaApi = Boolean(
     settingsSchemaApi?.normalizeSettingsState
     && settingsSchemaApi?.buildSettingsView
@@ -4302,12 +4199,14 @@ async function setPersistentSettings(updates, options = {}) {
           ...PERSISTED_SETTING_KEYS,
           ...PERSISTED_SETTINGS_SCHEMA_KEYS,
           ...SETTINGS_SCHEMA_VIEW_KEYS,
+          ...legacyMigrationStorageKeys,
           ...LEGACY_AUTO_STEP_DELAY_KEYS,
           ...LEGACY_VERIFICATION_RESEND_COUNT_KEYS,
           ...LEGACY_GROK_SUB2API_UPLOAD_KEYS,
         ]))
         : Array.from(new Set([
           ...SETTINGS_SCHEMA_VIEW_KEYS,
+          ...legacyMigrationStorageKeys,
           ...LEGACY_GROK_SUB2API_UPLOAD_KEYS,
         ]));
       await chrome.storage.local.remove(removedKeys);
@@ -11069,6 +10968,7 @@ const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'paypal-approve',
   'plus-checkout-return',
   'sub2api-session-import',
+  'sub2api-agent-identity-import',
   'cpa-session-import',
   'openai-upload-session-to-webchat',
   'oauth-login',
@@ -12280,6 +12180,7 @@ const AUTO_RUN_NODE_DELAYS = Object.freeze({
   'paypal-approve': 2000,
   'plus-checkout-return': 1000,
   'sub2api-session-import': 0,
+  'sub2api-agent-identity-import': 0,
   'cpa-session-import': 0,
   'oauth-login': 2000,
   'fetch-login-code': 2000,
@@ -13960,6 +13861,21 @@ const sub2ApiSessionImportExecutor = self.MultiPageBackgroundSub2ApiSessionImpor
   waitForTabCompleteUntilStopped,
   DEFAULT_SUB2API_GROUP_NAME,
 });
+const sub2ApiAgentIdentityImportExecutor = self.MultiPageBackgroundSub2ApiAgentIdentityImport?.createSub2ApiAgentIdentityImportExecutor({
+  addLog,
+  chrome,
+  completeNodeFromBackground,
+  ensureContentScriptReadyOnTabUntilStopped,
+  getTabId,
+  isTabAlive,
+  normalizeSub2ApiUrl,
+  registerTab,
+  sendTabMessageUntilStopped,
+  sleepWithStop,
+  throwIfStopped,
+  waitForTabCompleteUntilStopped,
+  DEFAULT_SUB2API_GROUP_NAME,
+});
 const cpaSessionImportExecutor = self.MultiPageBackgroundCpaSessionImport?.createCpaSessionImportExecutor({
   addLog,
   chrome,
@@ -14212,6 +14128,7 @@ const stepExecutorsByKey = {
   'paypal-approve': (state) => payPalApproveExecutor.executePayPalApprove(state),
   'plus-checkout-return': (state) => plusReturnConfirmExecutor.executePlusReturnConfirm(state),
   'sub2api-session-import': (state) => sub2ApiSessionImportExecutor.executeSub2ApiSessionImport(state),
+  'sub2api-agent-identity-import': (state) => sub2ApiAgentIdentityImportExecutor.executeSub2ApiAgentIdentityImport(state),
   'cpa-session-import': (state) => cpaSessionImportExecutor.executeCpaSessionImport(state),
   'openai-upload-session-to-webchat': (state) => openAiWebchatPublisher.executeOpenAiUploadSessionToWebchat(state),
   'openai-upload-session-to-chatgpt2api': (state) => openAiChatgpt2ApiPublisher.executeOpenAiUploadSessionToChatgpt2Api(state),
