@@ -555,8 +555,9 @@
         : targetAccountDeliveryModes[0];
       const requestedAccountDeliveryMode = normalizeAccountDeliveryMode(
         options?.accountDeliveryMode
-        ?? state?.accountDeliveryMode
         ?? state?.settingsState?.flows?.openai?.targets?.[effectiveTargetId]?.accountDeliveryMode
+        ?? state?.flows?.openai?.targets?.[effectiveTargetId]?.accountDeliveryMode
+        ?? state?.accountDeliveryMode
         ?? openAiFlowSettings?.targets?.[effectiveTargetId]?.accountDeliveryMode,
         defaultAccountDeliveryMode
       );

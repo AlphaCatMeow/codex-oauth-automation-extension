@@ -240,12 +240,12 @@ const btnClearGrokSso = document.getElementById('btn-clear-grok-sso');
 const rowCustomPassword = document.getElementById('row-custom-password');
 const rowPlusMode = document.getElementById('row-plus-mode');
 const inputPlusModeEnabled = document.getElementById('input-plus-mode-enabled');
+const rowAccountDeliveryMode = document.getElementById('row-account-delivery-mode');
+const selectAccountDeliveryMode = document.getElementById('select-account-delivery-mode');
+const accountDeliveryModeCaption = document.getElementById('account-delivery-mode-caption');
 const rowPlusPaymentMethod = document.getElementById('row-plus-payment-method');
 const selectPlusPaymentMethod = document.getElementById('select-plus-payment-method');
 const plusPaymentMethodCaption = document.getElementById('plus-payment-method-caption');
-const rowPlusAccountAccessStrategy = document.getElementById('row-plus-account-access-strategy');
-const selectPlusAccountAccessStrategy = document.getElementById('select-plus-account-access-strategy');
-const plusAccountAccessStrategyCaption = document.getElementById('plus-account-access-strategy-caption');
 const rowPayPalAccount = document.getElementById('row-paypal-account');
 const selectPayPalAccount = document.getElementById('select-paypal-account');
 const payPalAccountPickerRoot = document.getElementById('paypal-account-picker');
@@ -614,11 +614,6 @@ const PLUS_PAYMENT_METHOD_PAYPAL_HOSTED = 'paypal-hosted';
 const PLUS_PAYMENT_METHOD_NONE = 'none';
 const DEFAULT_PLUS_HOSTED_CHECKOUT_OAUTH_DELAY_SECONDS = 3;
 const DEFAULT_PLUS_PAYMENT_METHOD = PLUS_PAYMENT_METHOD_PAYPAL;
-const PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH = 'oauth';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION = 'sub2api_codex_session';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
-const PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI = 'codex_session';
-const DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY = PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
 const SIGNUP_METHOD_EMAIL = 'email';
 const SIGNUP_METHOD_PHONE = 'phone';
 const DEFAULT_SIGNUP_METHOD = SIGNUP_METHOD_EMAIL;
@@ -630,7 +625,8 @@ let currentUiLanguage = 'auto';
 let currentUiLocale = 'zh-CN';
 let currentPlusModeEnabled = false;
 let currentPlusPaymentMethod = DEFAULT_PLUS_PAYMENT_METHOD;
-let currentPlusAccountAccessStrategy = DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY;
+let currentAccountDeliveryMode = 'oauth';
+let currentAccountDeliveryRouteId = 'oauth';
 let currentSignupMethod = DEFAULT_SIGNUP_METHOD;
 let currentPhoneVerificationEnabled = false;
 let currentPhoneSignupReloginAfterBindEmailEnabled = DEFAULT_PHONE_SIGNUP_RELOGIN_AFTER_BIND_EMAIL_ENABLED;
@@ -649,6 +645,16 @@ let phoneSmsProviderOrderSelection = [];
 let heroSmsCountryMenuSearchKeyword = '';
 const heroSmsCountrySearchTextById = new Map();
 const phonePreferredActivationOptionMap = new Map();
+const accountDeliveryControl = window.SidepanelAccountDeliveryControl?.createAccountDeliveryControl?.({
+  row: rowAccountDeliveryMode,
+  select: selectAccountDeliveryMode,
+  caption: accountDeliveryModeCaption,
+  onChange(selection) {
+    saveAccountDeliveryModeSelection(selection).catch((error) => {
+      showToast(`账号交付方式保存失败：${error.message}`, 'error');
+    });
+  },
+}) || null;
 let phoneRuntimeCountdownTimer = null;
 let phoneRuntimeCountdownEndsAt = 0;
 let phoneRuntimeCountdownWindowIndex = 0;
@@ -661,14 +667,16 @@ let nexSmsCountryMenuSearchKeyword = '';
 const nexSmsCountrySearchTextById = new Map();
 let stepDefinitions = getStepDefinitionsForMode(false, {
   plusPaymentMethod: currentPlusPaymentMethod,
-  plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
+  accountDeliveryMode: currentAccountDeliveryMode,
+  accountDeliveryRouteId: currentAccountDeliveryRouteId,
   signupMethod: currentSignupMethod,
   phoneVerificationEnabled: currentPhoneVerificationEnabled,
   phoneSignupReloginAfterBindEmailEnabled: currentPhoneSignupReloginAfterBindEmailEnabled,
 });
 let workflowNodes = getWorkflowNodesForMode(false, {
   plusPaymentMethod: currentPlusPaymentMethod,
-  plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
+  accountDeliveryMode: currentAccountDeliveryMode,
+  accountDeliveryRouteId: currentAccountDeliveryRouteId,
   signupMethod: currentSignupMethod,
   phoneVerificationEnabled: currentPhoneVerificationEnabled,
   phoneSignupReloginAfterBindEmailEnabled: currentPhoneSignupReloginAfterBindEmailEnabled,
@@ -1124,13 +1132,17 @@ function initPhoneVerificationSectionExpandedState() {
 function getStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
   const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID !== 'undefined' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
   const defaultMethod = typeof DEFAULT_PLUS_PAYMENT_METHOD !== 'undefined' ? DEFAULT_PLUS_PAYMENT_METHOD : 'paypal';
-  const defaultStrategy = typeof DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY !== 'undefined' ? DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY : 'oauth';
+  const currentDeliveryMode = typeof currentAccountDeliveryMode !== 'undefined' ? currentAccountDeliveryMode : 'oauth';
+  const currentDeliveryRouteId = typeof currentAccountDeliveryRouteId !== 'undefined' ? currentAccountDeliveryRouteId : 'oauth';
   const rawPaymentMethod = typeof options === 'string'
     ? options
     : (options.plusPaymentMethod || currentPlusPaymentMethod || defaultMethod);
-  const rawPlusAccountAccessStrategy = typeof options === 'string'
-    ? currentPlusAccountAccessStrategy
-    : (options.plusAccountAccessStrategy || currentPlusAccountAccessStrategy || defaultStrategy);
+  const rawAccountDeliveryMode = typeof options === 'string'
+    ? currentDeliveryMode
+    : (options.accountDeliveryMode || currentDeliveryMode);
+  const rawAccountDeliveryRouteId = typeof options === 'string'
+    ? currentDeliveryRouteId
+    : (options.accountDeliveryRouteId || currentDeliveryRouteId);
   const rawSignupMethod = typeof options === 'string'
     ? currentSignupMethod
     : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
@@ -1171,9 +1183,10 @@ function getStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
   return (window.MultiPageStepDefinitions?.getSteps?.({
     activeFlowId: String(activeFlowId || '').trim().toLowerCase() || defaultFlowId,
     targetId,
+    accountDeliveryMode: normalizeAccountDeliveryMode(rawAccountDeliveryMode, 'oauth'),
+    accountDeliveryRouteId: String(rawAccountDeliveryRouteId || '').trim(),
     plusModeEnabled,
     plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
-    plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(rawPlusAccountAccessStrategy),
     openaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled,
     settingsState,
@@ -1193,13 +1206,17 @@ function getStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
 function getWorkflowNodesForMode(plusModeEnabled = false, options = {}) {
   const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID !== 'undefined' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
   const defaultMethod = typeof DEFAULT_PLUS_PAYMENT_METHOD !== 'undefined' ? DEFAULT_PLUS_PAYMENT_METHOD : 'paypal';
-  const defaultStrategy = typeof DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY !== 'undefined' ? DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY : 'oauth';
+  const currentDeliveryMode = typeof currentAccountDeliveryMode !== 'undefined' ? currentAccountDeliveryMode : 'oauth';
+  const currentDeliveryRouteId = typeof currentAccountDeliveryRouteId !== 'undefined' ? currentAccountDeliveryRouteId : 'oauth';
   const rawPaymentMethod = typeof options === 'string'
     ? options
     : (options.plusPaymentMethod || currentPlusPaymentMethod || defaultMethod);
-  const rawPlusAccountAccessStrategy = typeof options === 'string'
-    ? currentPlusAccountAccessStrategy
-    : (options.plusAccountAccessStrategy || currentPlusAccountAccessStrategy || defaultStrategy);
+  const rawAccountDeliveryMode = typeof options === 'string'
+    ? currentDeliveryMode
+    : (options.accountDeliveryMode || currentDeliveryMode);
+  const rawAccountDeliveryRouteId = typeof options === 'string'
+    ? currentDeliveryRouteId
+    : (options.accountDeliveryRouteId || currentDeliveryRouteId);
   const rawSignupMethod = typeof options === 'string'
     ? currentSignupMethod
     : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
@@ -1240,9 +1257,10 @@ function getWorkflowNodesForMode(plusModeEnabled = false, options = {}) {
   const nodes = window.MultiPageStepDefinitions?.getNodes?.({
     activeFlowId: String(activeFlowId || '').trim().toLowerCase() || defaultFlowId,
     targetId,
+    accountDeliveryMode: normalizeAccountDeliveryMode(rawAccountDeliveryMode, 'oauth'),
+    accountDeliveryRouteId: String(rawAccountDeliveryRouteId || '').trim(),
     plusModeEnabled,
     plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
-    plusAccountAccessStrategy: normalizePlusAccountAccessStrategy(rawPlusAccountAccessStrategy),
     openaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled,
     settingsState,
@@ -1304,13 +1322,17 @@ function rebuildStepDefinitionState(plusModeEnabled = false, options = {}) {
   currentPlusModeEnabled = Boolean(plusModeEnabled);
   const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID !== 'undefined' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
   const defaultMethod = typeof DEFAULT_PLUS_PAYMENT_METHOD !== 'undefined' ? DEFAULT_PLUS_PAYMENT_METHOD : 'paypal';
-  const defaultStrategy = typeof DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY !== 'undefined' ? DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY : 'oauth';
+  const currentDeliveryMode = typeof currentAccountDeliveryMode !== 'undefined' ? currentAccountDeliveryMode : 'oauth';
+  const currentDeliveryRouteId = typeof currentAccountDeliveryRouteId !== 'undefined' ? currentAccountDeliveryRouteId : 'oauth';
   const rawPaymentMethod = typeof options === 'string'
     ? options
     : (options.plusPaymentMethod || currentPlusPaymentMethod || defaultMethod);
-  const rawPlusAccountAccessStrategy = typeof options === 'string'
-    ? currentPlusAccountAccessStrategy
-    : (options.plusAccountAccessStrategy || currentPlusAccountAccessStrategy || defaultStrategy);
+  const rawAccountDeliveryMode = typeof options === 'string'
+    ? currentDeliveryMode
+    : (options.accountDeliveryMode || currentDeliveryMode);
+  const rawAccountDeliveryRouteId = typeof options === 'string'
+    ? currentDeliveryRouteId
+    : (options.accountDeliveryRouteId || currentDeliveryRouteId);
   const rawSignupMethod = typeof options === 'string'
     ? currentSignupMethod
     : (options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
@@ -1342,7 +1364,8 @@ function rebuildStepDefinitionState(plusModeEnabled = false, options = {}) {
   );
   const settingsState = options.settingsState || (typeof latestState !== 'undefined' ? latestState?.settingsState : undefined);
   currentPlusPaymentMethod = normalizePlusPaymentMethod(rawPaymentMethod);
-  currentPlusAccountAccessStrategy = normalizePlusAccountAccessStrategy(rawPlusAccountAccessStrategy);
+  currentAccountDeliveryMode = normalizeAccountDeliveryMode(rawAccountDeliveryMode, 'oauth');
+  currentAccountDeliveryRouteId = String(rawAccountDeliveryRouteId || '').trim();
   currentSignupMethod = normalizeSignupMethod(rawSignupMethod);
   currentPhoneVerificationEnabled = Boolean(phoneVerificationEnabled);
   currentPhoneSignupReloginAfterBindEmailEnabled = phoneSignupReloginAfterBindEmailEnabled;
@@ -1366,8 +1389,9 @@ function rebuildStepDefinitionState(plusModeEnabled = false, options = {}) {
   stepDefinitions = getStepDefinitionsForMode(currentPlusModeEnabled, {
     activeFlowId: nextActiveFlowId,
     targetId,
+    accountDeliveryMode: currentAccountDeliveryMode,
+    accountDeliveryRouteId: currentAccountDeliveryRouteId,
     plusPaymentMethod: currentPlusPaymentMethod,
-    plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
     openaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled,
     settingsState,
@@ -1380,8 +1404,9 @@ function rebuildStepDefinitionState(plusModeEnabled = false, options = {}) {
     ? getWorkflowNodesForMode(currentPlusModeEnabled, {
       activeFlowId: nextActiveFlowId,
       targetId,
+      accountDeliveryMode: currentAccountDeliveryMode,
+      accountDeliveryRouteId: currentAccountDeliveryRouteId,
       plusPaymentMethod: currentPlusPaymentMethod,
-      plusAccountAccessStrategy: currentPlusAccountAccessStrategy,
       openaiWebchatUploadEnabled,
       grokSub2apiGrok2ApiUploadEnabled,
       settingsState,
@@ -3674,48 +3699,6 @@ function normalizePlusHostedCheckoutOauthDelaySeconds(value) {
   return Math.min(120, Math.max(0, Math.floor(numeric)));
 }
 
-function normalizePlusAccountAccessStrategy(value = '') {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-  }
-  if (normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-  }
-  return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-}
-
-function normalizePlusAccountAccessStrategyUiValue(value = '') {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (
-    normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI
-    || normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-    || normalized === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-  ) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI;
-  }
-  return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-}
-
-function getPlusAccountSessionStrategyForTarget(targetId = '') {
-  const normalizedTargetId = normalizePlusStrategyTargetId(targetId);
-  if (normalizedTargetId === 'sub2api') {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION;
-  }
-  if (normalizedTargetId === 'cpa') {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION;
-  }
-  return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-}
-
-function resolvePlusAccountAccessStrategyForTarget(value = '', targetId = '') {
-  const normalizedUiValue = normalizePlusAccountAccessStrategyUiValue(value);
-  if (normalizedUiValue !== PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI) {
-    return PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-  }
-  return getPlusAccountSessionStrategyForTarget(targetId);
-}
-
 function getSelectedPlusPaymentMethod(state = latestState) {
   const defaultMethod = typeof DEFAULT_PLUS_PAYMENT_METHOD !== 'undefined' ? DEFAULT_PLUS_PAYMENT_METHOD : 'paypal';
   if (typeof selectPlusPaymentMethod !== 'undefined' && selectPlusPaymentMethod?.value) {
@@ -3724,154 +3707,231 @@ function getSelectedPlusPaymentMethod(state = latestState) {
   return normalizePlusPaymentMethod(state?.plusPaymentMethod || currentPlusPaymentMethod || defaultMethod);
 }
 
-function getRequestedPlusAccountAccessStrategy(state = latestState) {
-  const defaultStrategy = typeof DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY !== 'undefined'
-    ? DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY
-    : 'oauth';
-  const oauthStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH
-    : 'oauth';
-  const sub2apiSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-    : 'sub2api_codex_session';
-  const cpaSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-    : 'cpa_codex_session';
-  const sessionUiValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI
-    : 'codex_session';
-  const resolveTargetId = () => {
-    if (typeof getSelectedPanelMode === 'function') {
-      return getSelectedPanelMode();
-    }
-    if (typeof selectPanelMode !== 'undefined' && selectPanelMode?.value) {
-      return selectPanelMode.value;
-    }
-    return getSelectedTargetIdForState({
-      ...(latestState || {}),
-      ...(state || {}),
-      activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
-      flowId: DEFAULT_ACTIVE_FLOW_ID,
-    }, DEFAULT_ACTIVE_FLOW_ID);
-  };
-  const resolveStrategyForTarget = typeof resolvePlusAccountAccessStrategyForTarget === 'function'
-    ? resolvePlusAccountAccessStrategyForTarget
-    : ((value = '', targetId = '') => {
-      const normalizedValue = String(value || '').trim().toLowerCase();
-      const isSessionImport = normalizedValue === sessionUiValue
-        || normalizedValue === sub2apiSessionStrategyValue
-        || normalizedValue === cpaSessionStrategyValue;
-      if (!isSessionImport) {
-        return oauthStrategyValue;
-      }
-      const normalizedTargetId = typeof normalizePlusStrategyTargetId === 'function'
-        ? normalizePlusStrategyTargetId(targetId)
-        : String(targetId || '').trim().toLowerCase();
-      if (normalizedTargetId === 'sub2api') {
-        return sub2apiSessionStrategyValue;
-      }
-      if (normalizedTargetId === 'cpa') {
-        return cpaSessionStrategyValue;
-      }
-      return oauthStrategyValue;
-    });
-  const fallbackStrategy = normalizePlusAccountAccessStrategy(
-    (typeof selectPlusAccountAccessStrategy !== 'undefined' && selectPlusAccountAccessStrategy?.dataset?.requestedValue)
-    || state?.plusAccountAccessStrategy
-    || currentPlusAccountAccessStrategy
-    || defaultStrategy
-  );
-  if (
-    typeof selectPlusAccountAccessStrategy !== 'undefined'
-    && selectPlusAccountAccessStrategy
-    && !selectPlusAccountAccessStrategy.disabled
-  ) {
-    return resolveStrategyForTarget(selectPlusAccountAccessStrategy.value || fallbackStrategy, resolveTargetId());
+function normalizeAccountDeliveryMode(value = '', fallback = 'oauth') {
+  const rootScope = typeof window !== 'undefined' ? window : globalThis;
+  if (typeof rootScope.MultiPageOpenAiAccountDelivery?.normalizeAccountDeliveryMode === 'function') {
+    return rootScope.MultiPageOpenAiAccountDelivery.normalizeAccountDeliveryMode(value, fallback);
   }
-  return fallbackStrategy;
-}
-
-function normalizePlusStrategyTargetId(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'sub2api') {
-    return 'sub2api';
+  const normalizedFallback = String(fallback || '').trim().toLowerCase();
+  const supportedModes = ['oauth', 'session', 'agent_identity'];
+  if (supportedModes.includes(normalized)) {
+    return normalized;
   }
-  if (normalized === 'codex2api') {
-    return 'codex2api';
-  }
-  return 'cpa';
+  return supportedModes.includes(normalizedFallback) ? normalizedFallback : 'oauth';
 }
 
-function getPlusAccountAccessStrategyContinuationLabel(strategy = '', targetId = '') {
-  const normalizedStrategy = normalizePlusAccountAccessStrategy(strategy);
-  if (normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-    return '导入当前 ChatGPT 会话到 SUB2API';
-  }
-  if (normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-    return '导入当前 ChatGPT 会话到 CPA';
-  }
-  return 'OAuth 登录';
-}
-
-function getPlusAccountAccessStrategyDescription(strategy = '', targetId = '') {
-  const normalizedStrategy = normalizePlusAccountAccessStrategy(strategy);
-  const normalizedTargetId = normalizePlusStrategyTargetId(targetId);
-  if (normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
-    return '复用当前 Plus 已登录会话，直接导入到 SUB2API';
-  }
-  if (normalizedStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
-    return '复用当前 Plus 已登录会话，直接导入到 CPA';
-  }
-  if (normalizedTargetId === 'sub2api') {
-    return '通过 OAuth 回调创建 SUB2API 账号';
-  }
-  if (normalizedTargetId === 'codex2api') {
-    return '通过 OAuth 回调创建 Codex2API 账号';
-  }
-  return '通过 OAuth 回调创建 CPA 账号';
-}
-
-function resolvePlusManualContinuationActionLabelFromState(state = latestState) {
-  const activeFlowId = String(state?.activeFlowId || state?.flowId || DEFAULT_ACTIVE_FLOW_ID).trim().toLowerCase();
-  const signupMethod = normalizeSignupMethod(state?.resolvedSignupMethod || state?.signupMethod || DEFAULT_SIGNUP_METHOD);
-  const plusModeEnabled = state?.plusModeEnabled === undefined ? true : Boolean(state?.plusModeEnabled);
-  const normalizeTargetIdForFlowSafe = typeof normalizeTargetIdForFlow === 'function'
-    ? normalizeTargetIdForFlow
-    : ((flowId, targetId = '', fallback = '') => {
-      const normalizedFlowId = String(flowId || '').trim().toLowerCase() || DEFAULT_ACTIVE_FLOW_ID;
-      if (normalizedFlowId === DEFAULT_ACTIVE_FLOW_ID) {
-        const normalizedTargetId = String(targetId || fallback || '').trim().toLowerCase();
-        return normalizedTargetId === 'sub2api' || normalizedTargetId === 'codex2api' ? normalizedTargetId : 'cpa';
-      }
-      const normalizedTargetId = String(targetId || '').trim().toLowerCase();
-      return normalizedTargetId || String(fallback || '').trim().toLowerCase() || 'kiro-rs';
-    });
-  const getDefaultTargetIdForFlowSafe = typeof getDefaultTargetIdForFlow === 'function'
-    ? getDefaultTargetIdForFlow
-    : ((flowId = DEFAULT_ACTIVE_FLOW_ID) => (String(flowId || '').trim().toLowerCase() === DEFAULT_ACTIVE_FLOW_ID ? 'cpa' : 'kiro-rs'));
-  const normalizePlusStrategyTargetIdSafe = typeof normalizePlusStrategyTargetId === 'function'
-    ? normalizePlusStrategyTargetId
-    : ((value = '') => {
-      const normalized = String(value || '').trim().toLowerCase();
-      if (normalized === 'sub2api' || normalized === 'codex2api') {
-        return normalized;
-      }
-      return 'cpa';
-    });
-  const targetId = normalizePlusStrategyTargetIdSafe(
-    typeof getSelectedTargetIdForState === 'function'
-      ? getSelectedTargetIdForState(state, activeFlowId)
-      : normalizeTargetIdForFlowSafe(
-        activeFlowId,
-        state?.targetId || '',
-        getDefaultTargetIdForFlowSafe(activeFlowId)
-      )
+function getAccountDeliveryModeForTarget(state = latestState, targetId = '') {
+  const normalizedTargetId = String(targetId || '').trim().toLowerCase();
+  const targetCapabilities = typeof getFlowRegistry === 'function'
+    ? getFlowRegistry()?.getTargetCapabilities?.('openai', normalizedTargetId)
+    : null;
+  const supportedModes = Array.isArray(targetCapabilities?.supportedAccountDeliveryModes)
+    ? targetCapabilities.supportedAccountDeliveryModes.map((mode) => normalizeAccountDeliveryMode(mode))
+    : ['oauth'];
+  const configuredDefault = normalizeAccountDeliveryMode(
+    targetCapabilities?.defaultAccountDeliveryMode,
+    supportedModes[0] || 'oauth'
   );
-  const strategy = normalizePlusAccountAccessStrategy(state?.plusAccountAccessStrategy || DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY);
-  const effectiveStrategy = plusModeEnabled && activeFlowId === DEFAULT_ACTIVE_FLOW_ID && signupMethod === SIGNUP_METHOD_EMAIL
-    ? strategy
-    : PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH;
-  return getPlusAccountAccessStrategyContinuationLabel(effectiveStrategy, targetId);
+  const defaultMode = supportedModes.includes(configuredDefault)
+    ? configuredDefault
+    : (supportedModes[0] || 'oauth');
+  const canonicalMode = state?.settingsState?.flows?.openai?.targets?.[normalizedTargetId]?.accountDeliveryMode;
+  const selectedTargetId = String(
+    state?.settingsState?.flows?.openai?.selectedTargetId
+    || state?.targetId
+    || ''
+  ).trim().toLowerCase();
+  const flatMode = selectedTargetId === normalizedTargetId
+    ? state?.accountDeliveryMode
+    : undefined;
+  const normalizedMode = normalizeAccountDeliveryMode(canonicalMode ?? flatMode, defaultMode);
+  return supportedModes.includes(normalizedMode) ? normalizedMode : defaultMode;
+}
+
+function buildAccountDeliveryStatePatch(
+  state = {},
+  targetId = '',
+  accountDeliveryMode = 'oauth',
+  selectedTargetId = ''
+) {
+  const normalizedTargetId = String(targetId || '').trim().toLowerCase();
+  const normalizedSelectedTargetId = String(
+    selectedTargetId
+    || state?.settingsState?.flows?.openai?.selectedTargetId
+    || state?.targetId
+    || normalizedTargetId
+  ).trim().toLowerCase() || normalizedTargetId;
+  const normalizedMode = normalizeAccountDeliveryMode(accountDeliveryMode, 'oauth');
+  const currentSettingsState = state?.settingsState && typeof state.settingsState === 'object'
+    ? state.settingsState
+    : {};
+  const currentFlows = currentSettingsState?.flows && typeof currentSettingsState.flows === 'object'
+    ? currentSettingsState.flows
+    : {};
+  const currentOpenAi = currentFlows?.openai && typeof currentFlows.openai === 'object'
+    ? currentFlows.openai
+    : {};
+  const currentTargets = currentOpenAi?.targets && typeof currentOpenAi.targets === 'object'
+    ? currentOpenAi.targets
+    : {};
+  const currentSelectedMode = currentTargets?.[normalizedSelectedTargetId]?.accountDeliveryMode
+    ?? (String(state?.targetId || '').trim().toLowerCase() === normalizedSelectedTargetId
+      ? state?.accountDeliveryMode
+      : undefined);
+  const selectedMode = normalizedSelectedTargetId === normalizedTargetId
+    ? normalizedMode
+    : normalizeAccountDeliveryMode(currentSelectedMode, 'oauth');
+  const settingsState = {
+    ...currentSettingsState,
+    flows: {
+      ...currentFlows,
+      openai: {
+        ...currentOpenAi,
+        selectedTargetId: normalizedSelectedTargetId,
+        targets: {
+          ...currentTargets,
+          [normalizedTargetId]: {
+            ...(currentTargets?.[normalizedTargetId] || {}),
+            accountDeliveryMode: normalizedMode,
+          },
+        },
+      },
+    },
+  };
+
+  return {
+    targetId: normalizedSelectedTargetId,
+    accountDeliveryMode: selectedMode,
+    settingsState,
+  };
+}
+
+function reconcileAccountDeliveryDataUpdate(
+  payload = {},
+  currentState = {},
+  currentFlowId = '',
+  currentTargetId = ''
+) {
+  const hasDeliveryMode = Object.prototype.hasOwnProperty.call(payload, 'accountDeliveryMode');
+  const incomingTargetId = String(payload?.targetId || '').trim().toLowerCase();
+  const normalizedCurrentFlowId = String(currentFlowId || '').trim().toLowerCase();
+  const normalizedCurrentTargetId = String(currentTargetId || '').trim().toLowerCase();
+  if (
+    !hasDeliveryMode
+    || !incomingTargetId
+    || normalizedCurrentFlowId !== 'openai'
+    || !normalizedCurrentTargetId
+    || incomingTargetId === normalizedCurrentTargetId
+  ) {
+    return payload;
+  }
+
+  const incomingState = {
+    ...(currentState || {}),
+    ...(payload || {}),
+  };
+  return {
+    ...payload,
+    ...buildAccountDeliveryStatePatch(
+      incomingState,
+      incomingTargetId,
+      payload.accountDeliveryMode,
+      normalizedCurrentTargetId
+    ),
+  };
+}
+
+async function saveAccountDeliveryModeSelection(selection = {}) {
+  const targetId = normalizeTargetIdForFlow('openai', selection?.targetId, 'cpa');
+  const requestedMode = normalizeAccountDeliveryMode(selection?.accountDeliveryMode, 'oauth');
+  const capabilityState = resolveCurrentSidepanelCapabilities({
+    activeFlowId: 'openai',
+    targetId,
+    accountDeliveryMode: requestedMode,
+    state: {
+      ...(latestState || {}),
+      activeFlowId: 'openai',
+      flowId: 'openai',
+      targetId,
+      accountDeliveryMode: requestedMode,
+    },
+  });
+  if (
+    !capabilityState?.canEditAccountDeliveryMode
+    || capabilityState.effectiveTargetId !== targetId
+    || capabilityState.effectiveAccountDeliveryMode !== requestedMode
+  ) {
+    updatePanelModeUI();
+    throw new Error('当前运行状态或目标不允许修改账号交付方式。');
+  }
+
+  const previousState = latestState || {};
+  const previousMode = previousState?.settingsState?.flows?.openai?.targets?.[targetId]?.accountDeliveryMode
+    ?? (String(previousState?.targetId || '').trim().toLowerCase() === targetId
+      ? previousState?.accountDeliveryMode
+      : 'oauth');
+  const selectedTargetId = getSelectedTargetId(getSelectedFlowId(latestState));
+  syncLatestState(buildAccountDeliveryStatePatch(
+    latestState,
+    targetId,
+    requestedMode,
+    selectedTargetId
+  ));
+  if (selectedTargetId === targetId) {
+    syncStepDefinitionsFromUiState(latestState);
+    updatePanelModeUI();
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'SAVE_SETTING',
+      source: 'sidepanel',
+      payload: {
+        activeFlowId: 'openai',
+        targetId,
+        accountDeliveryMode: requestedMode,
+      },
+    });
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+    const responseMode = response?.state?.settingsState?.flows?.openai?.targets?.[targetId]?.accountDeliveryMode
+      ?? requestedMode;
+    const currentTargetId = getSelectedTargetId(getSelectedFlowId(latestState));
+    syncLatestState(buildAccountDeliveryStatePatch(
+      {
+        ...(latestState || {}),
+        settingsState: response?.state?.settingsState || latestState?.settingsState,
+      },
+      targetId,
+      responseMode,
+      currentTargetId
+    ));
+    if (currentTargetId === targetId) {
+      syncStepDefinitionsFromUiState(latestState);
+      updatePanelModeUI();
+    }
+    return response;
+  } catch (error) {
+    const currentTargetId = getSelectedTargetId(getSelectedFlowId(latestState));
+    syncLatestState(buildAccountDeliveryStatePatch(
+      latestState,
+      targetId,
+      previousMode,
+      currentTargetId
+    ));
+    if (currentTargetId === targetId) {
+      syncStepDefinitionsFromUiState(latestState);
+      updatePanelModeUI();
+    }
+    throw error;
+  }
+}
+
+function renderAccountDeliveryControl(capabilityState = null) {
+  const resolvedCapabilityState = capabilityState || resolveCurrentSidepanelCapabilities();
+  accountDeliveryControl?.render(resolvedCapabilityState || {});
 }
 
 function hasOwnStateValue(source, key) {
@@ -5163,39 +5223,6 @@ function collectSettingsPayload() {
       const normalizedTargetId = String(targetId || '').trim().toLowerCase();
       return normalizedTargetId || String(fallback || '').trim().toLowerCase() || 'kiro-rs';
     });
-  const resolvePlusAccountAccessStrategyForTargetSafe = typeof resolvePlusAccountAccessStrategyForTarget === 'function'
-    ? resolvePlusAccountAccessStrategyForTarget
-    : ((value = '', targetId = '') => {
-      const oauthStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH !== 'undefined'
-        ? PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH
-        : 'oauth';
-      const sub2apiSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION !== 'undefined'
-        ? PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-        : 'sub2api_codex_session';
-      const cpaSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION !== 'undefined'
-        ? PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-        : 'cpa_codex_session';
-      const sessionUiValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI !== 'undefined'
-        ? PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI
-        : 'codex_session';
-      const normalizedValue = String(value || '').trim().toLowerCase();
-      const isSessionImport = normalizedValue === sessionUiValue
-        || normalizedValue === sub2apiSessionStrategyValue
-        || normalizedValue === cpaSessionStrategyValue;
-      if (!isSessionImport) {
-        return oauthStrategyValue;
-      }
-      const normalizedTargetId = typeof normalizePlusStrategyTargetId === 'function'
-        ? normalizePlusStrategyTargetId(targetId)
-        : normalizePanelModeSafe(targetId || '');
-      if (normalizedTargetId === 'sub2api') {
-        return sub2apiSessionStrategyValue;
-      }
-      if (normalizedTargetId === 'cpa') {
-        return cpaSessionStrategyValue;
-      }
-      return oauthStrategyValue;
-    });
   const selectedTargetId = typeof getSelectedTargetId === 'function'
     ? getSelectedTargetId(activeFlowId)
     : normalizeTargetIdForFlowSafe(
@@ -5205,17 +5232,9 @@ function collectSettingsPayload() {
         ? getDefaultTargetIdForFlow(activeFlowId)
         : (activeFlowId === defaultFlowId ? 'cpa' : 'kiro-rs')
     );
-  const openAiTargetId = normalizePanelModeSafe(
-    activeFlowId === defaultFlowId
-      ? selectedTargetId
-      : getSelectedPanelMode(latestState)
-  );
   const rawPlusModeEnabled = typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
     ? Boolean(inputPlusModeEnabled.checked)
     : Boolean(latestState?.plusModeEnabled);
-  const requestedPlusAccountAccessStrategy = typeof getRequestedPlusAccountAccessStrategy === 'function'
-    ? getRequestedPlusAccountAccessStrategy(latestState)
-    : normalizePlusAccountAccessStrategy(latestState?.plusAccountAccessStrategy || DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY);
   const rawPhoneVerificationEnabled = Boolean(inputPhoneVerificationEnabled?.checked);
   const capabilityState = typeof resolveCurrentSidepanelCapabilities === 'function'
     ? resolveCurrentSidepanelCapabilities({
@@ -5228,7 +5247,6 @@ function collectSettingsPayload() {
         flowId: activeFlowId,
         targetId: selectedTargetId,
         plusModeEnabled: rawPlusModeEnabled,
-        plusAccountAccessStrategy: requestedPlusAccountAccessStrategy,
         phoneVerificationEnabled: rawPhoneVerificationEnabled,
         signupMethod: selectedSignupMethod,
       },
@@ -5249,7 +5267,6 @@ function collectSettingsPayload() {
             flowId: activeFlowId,
             targetId: selectedTargetId,
             plusModeEnabled: rawPlusModeEnabled,
-            plusAccountAccessStrategy: requestedPlusAccountAccessStrategy,
             phoneVerificationEnabled: rawPhoneVerificationEnabled,
             signupMethod: selectedSignupMethod,
           },
@@ -5257,11 +5274,8 @@ function collectSettingsPayload() {
         : null;
     })();
   const effectiveTargetId = capabilityState?.effectiveTargetId || selectedTargetId;
-  const effectiveOpenAiTargetId = normalizePanelModeSafe(
-    activeFlowId === defaultFlowId
-      ? effectiveTargetId
-      : openAiTargetId
-  );
+  const effectiveAccountDeliveryMode = capabilityState?.effectiveAccountDeliveryMode
+    || getAccountDeliveryModeForTarget(latestState, effectiveTargetId);
   const effectivePhoneVerificationEnabled = capabilityState
     ? Boolean(capabilityState.runtimeLocks?.phoneVerificationEnabled)
     : rawPhoneVerificationEnabled;
@@ -5443,6 +5457,7 @@ function collectSettingsPayload() {
     uiLanguage: safeUiLanguage,
     activeFlowId,
     targetId: effectiveTargetId,
+    accountDeliveryMode: effectiveAccountDeliveryMode,
     kiroRsUrl: currentKiroRsUrlValue !== null
       ? (currentKiroRsUrlValue || defaultKiroRsUrl)
       : (String(latestState?.kiroRsUrl || defaultKiroRsUrl).trim() || defaultKiroRsUrl),
@@ -5504,9 +5519,6 @@ function collectSettingsPayload() {
     codex2apiAdminKey: inputCodex2ApiAdminKey.value.trim(),
     plusModeEnabled: false,
     plusPaymentMethod,
-    plusAccountAccessStrategy: activeFlowId === defaultFlowId
-      ? resolvePlusAccountAccessStrategyForTargetSafe(requestedPlusAccountAccessStrategy, effectiveOpenAiTargetId)
-      : requestedPlusAccountAccessStrategy,
     hostedCheckoutVerificationUrl: typeof inputHostedCheckoutVerificationUrl !== 'undefined' && inputHostedCheckoutVerificationUrl
       ? String(inputHostedCheckoutVerificationUrl.value || '').trim()
       : String(latestState?.hostedCheckoutVerificationUrl || '').trim(),
@@ -10582,9 +10594,13 @@ function resolveCurrentSidepanelCapabilities(options = {}) {
     targetId || state?.targetId || '',
     getDefaultTargetIdForFlow(activeFlowId)
   );
+  const accountDeliveryMode = options?.accountDeliveryMode !== undefined
+    ? options.accountDeliveryMode
+    : getAccountDeliveryModeForTarget(state, state.targetId);
   return registry.resolveSidepanelCapabilities({
     activeFlowId,
     targetId: state.targetId,
+    accountDeliveryMode,
     signupMethod: options?.signupMethod ?? state?.signupMethod,
     state,
   });
@@ -10606,10 +10622,9 @@ function resolveStepDefinitionCapabilityState(state = latestState, options = {})
     plusModeEnabled: capabilityState
       ? Boolean(capabilityState.runtimeLocks?.plusModeEnabled)
       : Boolean(nextState?.plusModeEnabled),
-    plusAccountAccessStrategy: capabilityState?.effectivePlusAccountAccessStrategy
-      || normalizePlusAccountAccessStrategy(
-        nextState?.plusAccountAccessStrategy || DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY
-      ),
+    accountDeliveryMode: capabilityState?.effectiveAccountDeliveryMode
+      || getAccountDeliveryModeForTarget(nextState, capabilityState?.effectiveTargetId || nextState?.targetId),
+    accountDeliveryRouteId: capabilityState?.effectiveAccountDeliveryRouteId || 'oauth',
     signupMethod: capabilityState?.effectiveSignupMethod
       || normalizeSignupMethod((options?.signupMethod ?? nextState?.signupMethod) || DEFAULT_SIGNUP_METHOD),
     phoneVerificationEnabled: capabilityState
@@ -11096,117 +11111,9 @@ function updatePlusModeUI() {
   const paypalHostedValue = typeof PLUS_PAYMENT_METHOD_PAYPAL_HOSTED !== 'undefined' ? PLUS_PAYMENT_METHOD_PAYPAL_HOSTED : 'paypal-hosted';
   const noneValue = typeof PLUS_PAYMENT_METHOD_NONE !== 'undefined' ? PLUS_PAYMENT_METHOD_NONE : 'none';
 
-  const oauthStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH
-    : 'oauth';
-  const sub2apiSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION
-    : 'sub2api_codex_session';
-  const cpaSessionStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION
-    : 'cpa_codex_session';
-  const sessionUiStrategyValue = typeof PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI !== 'undefined'
-    ? PLUS_ACCOUNT_ACCESS_STRATEGY_CODEX_SESSION_UI
-    : 'codex_session';
   const defaultMethod = typeof DEFAULT_PLUS_PAYMENT_METHOD !== 'undefined' ? DEFAULT_PLUS_PAYMENT_METHOD : paypalValue;
-  const resolveStrategyTargetId = typeof normalizePlusStrategyTargetId === 'function'
-    ? normalizePlusStrategyTargetId
-    : ((value = '') => {
-      const normalized = String(value || '').trim().toLowerCase();
-      if (normalized === 'sub2api') {
-        return 'sub2api';
-      }
-      if (normalized === 'codex2api') {
-        return 'codex2api';
-      }
-      return 'cpa';
-    });
-  const describePlusAccountAccessStrategy = typeof getPlusAccountAccessStrategyDescription === 'function'
-    ? getPlusAccountAccessStrategyDescription
-    : ((strategy = '', targetId = '') => {
-      const normalizedStrategy = normalizePlusAccountAccessStrategy(strategy);
-      const normalizedTargetId = resolveStrategyTargetId(targetId);
-      if (normalizedStrategy === sub2apiSessionStrategyValue) {
-        return '复用当前 Plus 已登录会话，直接导入到 SUB2API';
-      }
-      if (normalizedStrategy === cpaSessionStrategyValue) {
-        return '复用当前 Plus 已登录会话，直接导入到 CPA';
-      }
-      if (normalizedTargetId === 'sub2api') {
-        return '通过 OAuth 回调创建 SUB2API 账号';
-      }
-      if (normalizedTargetId === 'codex2api') {
-        return '通过 OAuth 回调创建 Codex2API 账号';
-      }
-      return '通过 OAuth 回调创建 CPA 账号';
-    });
-  const normalizeStrategyUiValue = typeof normalizePlusAccountAccessStrategyUiValue === 'function'
-    ? normalizePlusAccountAccessStrategyUiValue
-    : ((value = '') => {
-      const normalized = String(value || '').trim().toLowerCase();
-      if (
-        normalized === sessionUiStrategyValue
-        || normalized === sub2apiSessionStrategyValue
-        || normalized === cpaSessionStrategyValue
-      ) {
-        return sessionUiStrategyValue;
-      }
-      return oauthStrategyValue;
-    });
-  const requestedPlusAccountAccessStrategy = typeof getRequestedPlusAccountAccessStrategy === 'function'
-    ? getRequestedPlusAccountAccessStrategy(latestState)
-    : normalizePlusAccountAccessStrategy(latestState?.plusAccountAccessStrategy || DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY);
-  const rawEnabled = typeof inputPlusModeEnabled !== 'undefined' && inputPlusModeEnabled
-    ? Boolean(inputPlusModeEnabled.checked)
-    : false;
-  const capabilityState = typeof resolveCurrentSidepanelCapabilities === 'function'
-    ? resolveCurrentSidepanelCapabilities({
-      targetId: typeof getSelectedTargetId === 'function'
-        ? getSelectedTargetId(getSelectedFlowId(latestState))
-        : latestState?.targetId,
-      state: {
-        ...(latestState || {}),
-        plusModeEnabled: rawEnabled,
-        plusAccountAccessStrategy: requestedPlusAccountAccessStrategy,
-      },
-    })
-    : (() => {
-      const rootScope = typeof window !== 'undefined' ? window : globalThis;
-      const registry = rootScope.MultiPageFlowCapabilities?.createFlowCapabilityRegistry?.({
-        defaultFlowId: typeof DEFAULT_ACTIVE_FLOW_ID === 'string' ? DEFAULT_ACTIVE_FLOW_ID : 'openai',
-      }) || null;
-      return registry?.resolveSidepanelCapabilities
-        ? registry.resolveSidepanelCapabilities({
-          activeFlowId: latestState?.activeFlowId,
-          targetId: typeof getSelectedTargetId === 'function'
-            ? getSelectedTargetId(getSelectedFlowId(latestState))
-            : latestState?.targetId,
-          state: {
-            ...(latestState || {}),
-            plusModeEnabled: rawEnabled,
-            plusAccountAccessStrategy: requestedPlusAccountAccessStrategy,
-          },
-        })
-        : null;
-    })();
-  const supportsPlusMode = capabilityState
-    ? Boolean(capabilityState.canShowPlusSettings)
-    : true;
-  const enabled = supportsPlusMode && rawEnabled;
-  const canEditPlusAccountAccessStrategy = Boolean(capabilityState?.canEditPlusAccountAccessStrategy);
-  const availablePlusAccountAccessStrategies = Array.isArray(capabilityState?.availablePlusAccountAccessStrategies)
-    && capabilityState.availablePlusAccountAccessStrategies.length > 0
-    ? capabilityState.availablePlusAccountAccessStrategies
-    : [oauthStrategyValue];
-  const effectivePlusAccountAccessStrategy = capabilityState?.effectivePlusAccountAccessStrategy
-    || requestedPlusAccountAccessStrategy
-    || oauthStrategyValue;
-  const effectiveTargetId = resolveStrategyTargetId(
-    capabilityState?.effectiveTargetId
-    || (typeof getSelectedPanelMode === 'function' ? getSelectedPanelMode(latestState) : latestState?.targetId)
-    || 'cpa'
-  );
-  const method = enabled ? getSelectedPlusPaymentMethod() : defaultMethod;
+  const enabled = false;
+  const method = defaultMethod;
   const selectedMethod = typeof selectPlusPaymentMethod !== 'undefined' && selectPlusPaymentMethod?.value
     ? normalizePlusPaymentMethod(selectPlusPaymentMethod.value)
     : method;
@@ -11239,83 +11146,6 @@ function updatePlusModeUI() {
     }
     row.style.display = enabled ? '' : 'none';
   });
-  [
-    typeof rowPlusAccountAccessStrategy !== 'undefined' ? rowPlusAccountAccessStrategy : null,
-  ].forEach((row) => {
-    if (!row) {
-      return;
-    }
-    row.style.display = enabled ? '' : 'none';
-  });
-  if (typeof selectPlusAccountAccessStrategy !== 'undefined' && selectPlusAccountAccessStrategy) {
-    const availableStrategyUiValueSet = new Set(availablePlusAccountAccessStrategies.map(normalizeStrategyUiValue));
-    Array.from(selectPlusAccountAccessStrategy.options || []).forEach((option) => {
-      const optionValue = normalizeStrategyUiValue(option?.value || '');
-      const optionSupported = availableStrategyUiValueSet.has(optionValue);
-      option.hidden = enabled ? !optionSupported : false;
-      option.disabled = enabled ? !optionSupported : false;
-    });
-    selectPlusAccountAccessStrategy.dataset.requestedValue = capabilityState?.runtimeLocks?.accountContribution
-      ? requestedPlusAccountAccessStrategy
-      : effectivePlusAccountAccessStrategy;
-    selectPlusAccountAccessStrategy.value = normalizeStrategyUiValue(effectivePlusAccountAccessStrategy);
-    selectPlusAccountAccessStrategy.disabled = !enabled || !canEditPlusAccountAccessStrategy;
-    selectPlusAccountAccessStrategy.setAttribute('aria-disabled', String(selectPlusAccountAccessStrategy.disabled));
-  }
-  if (typeof plusAccountAccessStrategyCaption !== 'undefined' && plusAccountAccessStrategyCaption) {
-    if (!enabled) {
-      plusAccountAccessStrategyCaption.textContent = '当前来源仅支持 OAuth';
-    } else if (!canEditPlusAccountAccessStrategy) {
-      plusAccountAccessStrategyCaption.textContent = '当前来源仅支持 OAuth';
-    } else if (effectivePlusAccountAccessStrategy === sub2apiSessionStrategyValue) {
-      plusAccountAccessStrategyCaption.textContent = '复用当前 Plus 已登录会话，直接导入到 SUB2API';
-    } else if (effectivePlusAccountAccessStrategy === oauthStrategyValue) {
-      plusAccountAccessStrategyCaption.textContent = '通过 OAuth 回调创建 SUB2API 账号';
-    } else {
-      plusAccountAccessStrategyCaption.textContent = '当前来源仅支持 OAuth';
-    }
-  }
-  if (typeof plusAccountAccessStrategyCaption !== 'undefined' && plusAccountAccessStrategyCaption) {
-    if (!enabled || !canEditPlusAccountAccessStrategy) {
-      plusAccountAccessStrategyCaption.textContent = '当前来源仅支持 OAuth';
-    } else {
-      plusAccountAccessStrategyCaption.textContent = describePlusAccountAccessStrategy(
-        effectivePlusAccountAccessStrategy,
-        effectiveTargetId
-      );
-    }
-  }
-  if (typeof plusAccountAccessStrategyCaption !== 'undefined' && plusAccountAccessStrategyCaption) {
-    plusAccountAccessStrategyCaption.textContent = !enabled
-      ? '当前来源仅支持 OAuth'
-      : ((effectivePlusAccountAccessStrategy !== oauthStrategyValue || canEditPlusAccountAccessStrategy)
-        ? describePlusAccountAccessStrategy(
-        effectivePlusAccountAccessStrategy,
-        effectiveTargetId
-        )
-        : '当前来源仅支持 OAuth');
-  }
-  if (enabled && effectivePlusAccountAccessStrategy === sub2apiSessionStrategyValue) {
-    [
-      typeof rowSub2ApiUrl !== 'undefined' ? rowSub2ApiUrl : null,
-      typeof rowSub2ApiEmail !== 'undefined' ? rowSub2ApiEmail : null,
-      typeof rowSub2ApiPassword !== 'undefined' ? rowSub2ApiPassword : null,
-      typeof rowSub2ApiGroup !== 'undefined' ? rowSub2ApiGroup : null,
-      typeof rowSub2ApiAccountPriority !== 'undefined' ? rowSub2ApiAccountPriority : null,
-      typeof rowSub2ApiDefaultProxy !== 'undefined' ? rowSub2ApiDefaultProxy : null,
-    ].forEach((row) => {
-      if (row) row.style.display = '';
-    });
-  }
-  if (enabled && effectivePlusAccountAccessStrategy === cpaSessionStrategyValue) {
-    [
-      typeof rowVpsUrl !== 'undefined' ? rowVpsUrl : null,
-      typeof rowVpsPassword !== 'undefined' ? rowVpsPassword : null,
-      typeof rowLocalCpaStep9Mode !== 'undefined' ? rowLocalCpaStep9Mode : null,
-    ].forEach((row) => {
-      if (row) row.style.display = '';
-    });
-  }
   [
     typeof rowPayPalAccount !== 'undefined' ? rowPayPalAccount : null,
   ].forEach((row) => {
@@ -11871,7 +11701,8 @@ function renderStepsList() {
 
 function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOrOptions = {}, maybeOptions = {}) {
   const defaultFlowId = typeof DEFAULT_ACTIVE_FLOW_ID !== 'undefined' ? DEFAULT_ACTIVE_FLOW_ID : 'openai';
-  const defaultStrategy = typeof DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY !== 'undefined' ? DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY : 'oauth';
+  const currentDeliveryMode = typeof currentAccountDeliveryMode !== 'undefined' ? currentAccountDeliveryMode : 'oauth';
+  const currentDeliveryRouteId = typeof currentAccountDeliveryRouteId !== 'undefined' ? currentAccountDeliveryRouteId : 'oauth';
   const nextPlusModeEnabled = Boolean(plusModeEnabled);
   const options = typeof plusPaymentMethodOrOptions === 'string'
     ? maybeOptions
@@ -11879,11 +11710,13 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   const rawPaymentMethod = typeof plusPaymentMethodOrOptions === 'string'
     ? plusPaymentMethodOrOptions
     : (options.plusPaymentMethod || getSelectedPlusPaymentMethod(latestState));
-  const nextPlusAccountAccessStrategy = normalizePlusAccountAccessStrategy(
-    options.plusAccountAccessStrategy
-      || currentPlusAccountAccessStrategy
-      || defaultStrategy
+  const nextAccountDeliveryMode = normalizeAccountDeliveryMode(
+    options.accountDeliveryMode || currentDeliveryMode,
+    'oauth'
   );
+  const nextAccountDeliveryRouteId = String(
+    options.accountDeliveryRouteId || currentDeliveryRouteId
+  ).trim();
   const nextSignupMethod = normalizeSignupMethod(options.signupMethod || currentSignupMethod || DEFAULT_SIGNUP_METHOD);
   const nextPhoneVerificationEnabled = Boolean(options.phoneVerificationEnabled ?? (typeof inputPhoneVerificationEnabled !== 'undefined' && inputPhoneVerificationEnabled
     ? inputPhoneVerificationEnabled.checked
@@ -11935,9 +11768,10 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   const nextPaymentTitle = rootScope.MultiPageStepDefinitions?.getPlusPaymentStepTitle?.({
     activeFlowId: nextActiveFlowId,
     targetId: nextTargetId,
+    accountDeliveryMode: nextAccountDeliveryMode,
+    accountDeliveryRouteId: nextAccountDeliveryRouteId,
     plusModeEnabled: nextPlusModeEnabled,
     plusPaymentMethod: nextPaymentMethod,
-    plusAccountAccessStrategy: nextPlusAccountAccessStrategy,
     openaiWebchatUploadEnabled: nextOpenaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled: nextGrokSub2apiGrok2ApiUploadEnabled,
     settingsState: nextSettingsState,
@@ -11949,7 +11783,8 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   const shouldRender = Boolean(options.render)
     || nextPlusModeEnabled !== currentPlusModeEnabled
     || nextPaymentMethod !== currentPlusPaymentMethod
-    || nextPlusAccountAccessStrategy !== currentPlusAccountAccessStrategy
+    || nextAccountDeliveryMode !== currentDeliveryMode
+    || nextAccountDeliveryRouteId !== currentDeliveryRouteId
     || nextSignupMethod !== currentSignupMethod
     || nextPhoneVerificationEnabled !== currentPhoneVerificationEnabled
     || nextPhoneSignupReloginAfterBindEmailEnabled !== currentPhoneSignupReloginAfterBindEmailEnabled
@@ -11966,8 +11801,9 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
   rebuildStepDefinitionState(nextPlusModeEnabled, {
     activeFlowId: nextActiveFlowId,
     targetId: nextTargetId,
+    accountDeliveryMode: nextAccountDeliveryMode,
+    accountDeliveryRouteId: nextAccountDeliveryRouteId,
     plusPaymentMethod: nextPaymentMethod,
-    plusAccountAccessStrategy: nextPlusAccountAccessStrategy,
     openaiWebchatUploadEnabled: nextOpenaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled: nextGrokSub2apiGrok2ApiUploadEnabled,
     settingsState: nextSettingsState,
@@ -11998,8 +11834,9 @@ function syncStepDefinitionsFromUiState(stateOverrides = {}) {
   syncStepDefinitionsForMode(stepDefinitionState.plusModeEnabled, {
     activeFlowId: nextState?.activeFlowId || nextState?.flowId || DEFAULT_ACTIVE_FLOW_ID,
     targetId: nextState?.targetId,
+    accountDeliveryMode: stepDefinitionState.accountDeliveryMode,
+    accountDeliveryRouteId: stepDefinitionState.accountDeliveryRouteId,
     plusPaymentMethod: getSelectedPlusPaymentMethod(nextState),
-    plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
     openaiWebchatUploadEnabled: stepDefinitionState.openaiWebchatUploadEnabled,
     grokSub2apiGrok2ApiUploadEnabled: stepDefinitionState.grokSub2apiGrok2ApiUploadEnabled,
     settingsState: nextState?.settingsState,
@@ -12028,9 +11865,10 @@ function applySettingsState(state) {
     syncStepDefinitionsForMode(stepDefinitionState.plusModeEnabled, {
       activeFlowId: state?.activeFlowId || state?.flowId,
       targetId: state?.targetId,
+      accountDeliveryMode: stepDefinitionState.accountDeliveryMode,
+      accountDeliveryRouteId: stepDefinitionState.accountDeliveryRouteId,
       plusPaymentMethod: state?.plusPaymentMethod,
       signupMethod: stepDefinitionState.signupMethod,
-      plusAccountAccessStrategy: stepDefinitionState.plusAccountAccessStrategy,
       openaiWebchatUploadEnabled: stepDefinitionState.openaiWebchatUploadEnabled,
       grokSub2apiGrok2ApiUploadEnabled: stepDefinitionState.grokSub2apiGrok2ApiUploadEnabled,
       settingsState: state?.settingsState,
@@ -12113,13 +11951,6 @@ function applySettingsState(state) {
   }
   if (typeof selectPlusPaymentMethod !== 'undefined' && selectPlusPaymentMethod) {
     selectPlusPaymentMethod.value = normalizePlusPaymentMethod(state?.plusPaymentMethod || DEFAULT_PLUS_PAYMENT_METHOD);
-  }
-  currentPlusAccountAccessStrategy = normalizePlusAccountAccessStrategy(
-    state?.plusAccountAccessStrategy || DEFAULT_PLUS_ACCOUNT_ACCESS_STRATEGY
-  );
-  if (typeof selectPlusAccountAccessStrategy !== 'undefined' && selectPlusAccountAccessStrategy) {
-    selectPlusAccountAccessStrategy.dataset.requestedValue = currentPlusAccountAccessStrategy;
-    selectPlusAccountAccessStrategy.value = normalizePlusAccountAccessStrategyUiValue(currentPlusAccountAccessStrategy);
   }
   if (typeof inputHostedCheckoutVerificationUrl !== 'undefined' && inputHostedCheckoutVerificationUrl) {
     inputHostedCheckoutVerificationUrl.value = String(state?.hostedCheckoutVerificationUrl || '').trim();
@@ -14706,6 +14537,9 @@ function updatePanelModeUI() {
   if (typeof applyFlowSettingsGroupVisibility === 'function') {
     applyFlowSettingsGroupVisibility(visibleGroupIds);
   }
+  if (typeof renderAccountDeliveryControl === 'function') {
+    renderAccountDeliveryControl(capabilityState);
+  }
   if (typeof updateGrokSub2ApiGrok2ApiUploadUi === 'function') {
     updateGrokSub2ApiGrok2ApiUploadUi(activeFlowId, effectiveTargetId);
   }
@@ -16903,29 +16737,17 @@ selectPanelMode.addEventListener('change', async () => {
       return;
     }
     nextTargetId = nextPanelMode;
+    const nextAccountDeliveryMode = getAccountDeliveryModeForTarget(latestState, nextPanelMode);
     syncLatestState({
       activeFlowId,
       flowId: activeFlowId,
-      targetId: nextPanelMode,
-    });
-    if (
-      typeof selectPlusAccountAccessStrategy !== 'undefined'
-      && selectPlusAccountAccessStrategy
-      && !latestState?.accountContributionEnabled
-    ) {
-      const nextPlusStrategy = resolvePlusAccountAccessStrategyForTarget(
-        selectPlusAccountAccessStrategy.value
-          || selectPlusAccountAccessStrategy.dataset?.requestedValue
-          || currentPlusAccountAccessStrategy,
+      ...buildAccountDeliveryStatePatch(
+        latestState,
+        nextPanelMode,
+        nextAccountDeliveryMode,
         nextPanelMode
-      );
-      currentPlusAccountAccessStrategy = nextPlusStrategy;
-      selectPlusAccountAccessStrategy.dataset.requestedValue = nextPlusStrategy;
-      selectPlusAccountAccessStrategy.value = normalizePlusAccountAccessStrategyUiValue(nextPlusStrategy);
-      syncLatestState({
-        plusAccountAccessStrategy: nextPlusStrategy,
-      });
-    }
+      ),
+    });
   } else {
     syncLatestState({
       activeFlowId,
@@ -16948,18 +16770,6 @@ selectPanelMode.addEventListener('change', async () => {
   applyStepExecutionRangeState(latestState);
   renderStepStatuses(latestState);
   updateButtonStates();
-  markSettingsDirty(true);
-  saveSettings({ silent: true }).catch(() => { });
-});
-
-selectPlusAccountAccessStrategy?.addEventListener('change', () => {
-  const nextUiValue = normalizePlusAccountAccessStrategyUiValue(selectPlusAccountAccessStrategy.value);
-  selectPlusAccountAccessStrategy.value = nextUiValue;
-  selectPlusAccountAccessStrategy.dataset.requestedValue = resolvePlusAccountAccessStrategyForTarget(
-    nextUiValue,
-    typeof getSelectedPanelMode === 'function' ? getSelectedPanelMode(latestState) : latestState?.targetId
-  );
-  updatePlusModeUI();
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
 });
@@ -19055,6 +18865,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     case 'DATA_UPDATED': {
+      const selectedFlowIdBeforeUpdate = getSelectedFlowId(latestState);
+      const selectedTargetIdBeforeUpdate = getSelectedTargetId(selectedFlowIdBeforeUpdate);
+      message.payload = reconcileAccountDeliveryDataUpdate(
+        message.payload || {},
+        latestState || {},
+        selectedFlowIdBeforeUpdate,
+        selectedTargetIdBeforeUpdate
+      );
       syncLatestState(message.payload);
       const activeSettingsEditor = typeof document !== 'undefined' ? document.activeElement : null;
       const shouldDeferDataUpdatedUiApply = settingsSaveInFlight
@@ -19106,6 +18924,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       if (message.payload.localCpaStep9Mode !== undefined) {
         setLocalCpaStep9Mode(message.payload.localCpaStep9Mode);
+      }
+      if (message.payload.accountDeliveryMode !== undefined) {
+        syncStepDefinitionsFromUiState(latestState);
+        renderAccountDeliveryControl();
       }
       if (
         message.payload.targetId !== undefined
@@ -19395,34 +19217,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.payload.plusPaymentMethod !== undefined && selectPlusPaymentMethod) {
         selectPlusPaymentMethod.value = normalizePlusPaymentMethod(message.payload.plusPaymentMethod);
       }
-      if (message.payload.plusAccountAccessStrategy !== undefined && selectPlusAccountAccessStrategy) {
-        currentPlusAccountAccessStrategy = normalizePlusAccountAccessStrategy(message.payload.plusAccountAccessStrategy);
-        selectPlusAccountAccessStrategy.dataset.requestedValue = currentPlusAccountAccessStrategy;
-        if (!selectPlusAccountAccessStrategy.disabled) {
-          selectPlusAccountAccessStrategy.value = normalizePlusAccountAccessStrategyUiValue(currentPlusAccountAccessStrategy);
-        }
-      }
       if (
         message.payload.plusModeEnabled !== undefined
         || message.payload.plusPaymentMethod !== undefined
-        || message.payload.plusAccountAccessStrategy !== undefined
       ) {
-        const stepDefinitionState = typeof resolveStepDefinitionCapabilityState === 'function'
-          ? resolveStepDefinitionCapabilityState(latestState, {
-            signupMethod: latestState?.signupMethod,
-          })
-          : {
-            plusModeEnabled: Boolean(latestState?.plusModeEnabled),
-            signupMethod: normalizeSignupMethod(latestState?.signupMethod || DEFAULT_SIGNUP_METHOD),
-          };
-        syncStepDefinitionsForMode(
-          stepDefinitionState.plusModeEnabled,
-          latestState?.plusPaymentMethod,
-          {
-            render: true,
-            signupMethod: stepDefinitionState.signupMethod,
-          }
-        );
+        syncStepDefinitionsFromUiState(latestState);
         updatePlusModeUI();
         updateSignupMethodUI({ notify: true });
       }

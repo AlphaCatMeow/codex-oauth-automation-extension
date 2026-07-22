@@ -116,6 +116,33 @@ test('flow capability registry resolves account delivery independently from Plus
   assert.equal(sub2ApiAgent.effectiveAccountDeliveryRouteId, 'sub2api-agent-identity');
 });
 
+test('flow capability registry prefers the selected target delivery setting over a stale flat view', () => {
+  const api = loadApi();
+  const registry = api.createFlowCapabilityRegistry();
+
+  const capabilityState = registry.resolveSidepanelCapabilities({
+    state: {
+      activeFlowId: 'openai',
+      targetId: 'sub2api',
+      accountDeliveryMode: 'session',
+      settingsState: {
+        flows: {
+          openai: {
+            targets: {
+              cpa: { accountDeliveryMode: 'session' },
+              sub2api: { accountDeliveryMode: 'agent_identity' },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(capabilityState.requestedAccountDeliveryMode, 'agent_identity');
+  assert.equal(capabilityState.effectiveAccountDeliveryMode, 'agent_identity');
+  assert.equal(capabilityState.effectiveAccountDeliveryRouteId, 'sub2api-agent-identity');
+});
+
 test('flow capability registry hides fixed delivery controls and locks contribution or running changes', () => {
   const api = loadApi();
   const registry = api.createFlowCapabilityRegistry();
@@ -499,7 +526,7 @@ test('flow capability registry disables phone settings for OpenAI webchat target
   assert.equal(capabilityState.stepDefinitionOptions.openaiWebchatUploadEnabled, true);
   assert.deepEqual(
     capabilityState.visibleGroupIds,
-    ['openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-webchat', 'service-account', 'service-email', 'service-proxy']
+    ['openai-account-delivery', 'openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-webchat', 'service-account', 'service-email', 'service-proxy']
   );
 
   const validation = registry.validateModeSwitch({
@@ -587,7 +614,7 @@ test('flow capability registry disables phone settings for OpenAI ChatGPT2API ta
   assert.equal(capabilityState.stepDefinitionOptions.openaiChatgpt2ApiUploadEnabled, true);
   assert.deepEqual(
     capabilityState.visibleGroupIds,
-    ['openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-chatgpt2api', 'service-account', 'service-email', 'service-proxy']
+    ['openai-account-delivery', 'openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-chatgpt2api', 'service-account', 'service-email', 'service-proxy']
   );
 
   const validation = registry.validateModeSwitch({

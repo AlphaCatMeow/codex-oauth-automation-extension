@@ -47,7 +47,6 @@
     '\u4ee3\u7406API': 'Proxy API',
     '\u5f53\u524d': 'Current',
     '\u5f53\u524d\u5206\u914d': 'Allocated',
-    '\u5f53\u524d\u6765\u6e90\u4ec5\u652f\u6301 OAuth': 'Current source only supports OAuth',
     '\u5bfc\u51fa\u914d\u7f6e': 'Export Config',
     '\u5bfc\u5165\u4f60\u63d0\u524d\u51c6\u5907\u597d\u7684\u6ce8\u518c\u90ae\u7bb1\uff0c\u6bcf\u884c\u4e00\u4e2a\u90ae\u7bb1\u5730\u5740\u3002': 'Import your pre-prepared registration emails, one email per line.',
     '\u5bfc\u5165\u914d\u7f6e': 'Import Config',
@@ -173,7 +172,6 @@
     '\u4e0a\u4e00\u9875': 'Prev',
     '\u751f\u6548\u987a\u5e8f': 'Effective Order',
     '\u65f6\u957f(life)': 'Life',
-    '\u4f7f\u7528\u4f1a\u8bdd JSON \u5bfc\u5165': 'Import via session JSON',
     '\u4f7f\u7528\u6559\u7a0b': 'Tutorial',
     '\u59cb\u7ec8\u521b\u5efa\u65b0\u522b\u540d': 'Always create new alias',
     '\u6536\u7801\u5904\u7406': 'SMS Params',
@@ -251,8 +249,8 @@
     '\u5c55\u5f00\u8bbe\u7f6e': 'Expand Settings',
     '\u8d26\u53f7': 'Account',
     '\u8d26\u53f7\u4ee3\u7406\u5217\u8868': 'Account Proxy List',
+    '\u8d26\u53f7\u4ea4\u4ed8': 'Account Delivery',
     '\u8d26\u53f7\u8bb0\u5f55': 'Account Records',
-    '\u8d26\u53f7\u63a5\u5165\u7b56\u7565': 'Account Access Strategy',
     '\u8d26\u53f7\u5bc6\u7801': 'Account/Password',
     '\u8d26\u53f7\u5bc6\u7801\u6a21\u5f0f': 'Account/Password Mode',
     '\u8d26\u6237\u5bc6\u7801': 'Account Password',
@@ -309,6 +307,9 @@
     'QQ \u90ae\u7bb1': 'QQ Mail',
     'QQ \u90ae\u7bb1 (wx.mail.qq.com) \u7248\u672c\u8001\u65e7\uff0c\u8bf7\u81ea\u884c\u7ef4\u62a4\u4f7f\u7528': 'QQ Mail (wx.mail.qq.com) outdated, please maintain yourself',
     'SSO \u72b6\u6001': 'SSO Status',
+    '\u901a\u8fc7\u76ee\u6807\u5e73\u53f0 OAuth \u6388\u6743\u4ea4\u4ed8\u8d26\u53f7': 'Deliver account through target platform OAuth authorization',
+    '\u8bfb\u53d6\u5f53\u524d ChatGPT \u767b\u5f55\u4f1a\u8bdd\u5e76\u5bfc\u5165\u76ee\u6807\u5e73\u53f0': 'Read the current ChatGPT session and import it into the target platform',
+    '\u6ce8\u518c\u672c\u5730 Agent Identity \u540e\u5bfc\u5165\u76ee\u6807\u5e73\u53f0': 'Register a local Agent Identity and import it into the target platform',
   });
 
   const ATTRIBUTE_EN_US = Object.freeze({

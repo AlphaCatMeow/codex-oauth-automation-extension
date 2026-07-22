@@ -46,15 +46,15 @@ test('flow registry exposes canonical flow and target metadata', () => {
   assert.equal(flowRegistry.normalizeTargetId('grok', 'anything-else'), 'webchat2api');
   assert.deepEqual(
     flowRegistry.getVisibleGroupIds('openai', 'cpa'),
-    ['openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-phone', 'openai-target-cpa', 'service-account', 'service-email', 'service-proxy']
+    ['openai-account-delivery', 'openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-phone', 'openai-target-cpa', 'service-account', 'service-email', 'service-proxy']
   );
   assert.deepEqual(
     flowRegistry.getVisibleGroupIds('openai', 'webchat'),
-    ['openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-webchat', 'service-account', 'service-email', 'service-proxy']
+    ['openai-account-delivery', 'openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-webchat', 'service-account', 'service-email', 'service-proxy']
   );
   assert.deepEqual(
     flowRegistry.getVisibleGroupIds('openai', 'chatgpt2api'),
-    ['openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-chatgpt2api', 'service-account', 'service-email', 'service-proxy']
+    ['openai-account-delivery', 'openai-plus', 'shared-auto-run', 'openai-oauth', 'openai-step6', 'openai-target-chatgpt2api', 'service-account', 'service-email', 'service-proxy']
   );
   assert.deepEqual(
     flowRegistry.getVisibleGroupIds('kiro', 'kiro-rs'),
@@ -120,8 +120,12 @@ test('flow registry exposes canonical flow and target metadata', () => {
     false
   );
   assert.deepEqual(
+    flowRegistry.getSettingsGroupDefinition('openai-account-delivery')?.rowIds,
+    ['row-account-delivery-mode']
+  );
+  assert.deepEqual(
     flowRegistry.getSettingsGroupDefinition('openai-plus')?.rowIds,
-    ['row-plus-mode', 'row-plus-account-access-strategy', 'row-plus-payment-method']
+    ['row-plus-mode', 'row-plus-payment-method']
   );
   assert.deepEqual(
     flowRegistry.getSettingsGroupDefinition('shared-auto-run')?.rowIds,

@@ -70,6 +70,24 @@ test('sidepanel static i18n translates and restores known strings', () => {
   assert.equal(i18n.translateValue('\u672a\u6536\u5f55\u6587\u6848', 'en-US'), '\u672a\u6536\u5f55\u6587\u6848');
 });
 
+test('sidepanel static i18n translates account delivery metadata', () => {
+  const i18n = loadSidepanelStaticI18n();
+
+  assert.equal(i18n.translateValue('\u8d26\u53f7\u4ea4\u4ed8', 'en-US'), 'Account Delivery');
+  assert.equal(
+    i18n.translateValue('\u901a\u8fc7\u76ee\u6807\u5e73\u53f0 OAuth \u6388\u6743\u4ea4\u4ed8\u8d26\u53f7', 'en-US'),
+    'Deliver account through target platform OAuth authorization'
+  );
+  assert.equal(
+    i18n.translateValue('\u8bfb\u53d6\u5f53\u524d ChatGPT \u767b\u5f55\u4f1a\u8bdd\u5e76\u5bfc\u5165\u76ee\u6807\u5e73\u53f0', 'en-US'),
+    'Read the current ChatGPT session and import it into the target platform'
+  );
+  assert.equal(
+    i18n.translateValue('\u6ce8\u518c\u672c\u5730 Agent Identity \u540e\u5bfc\u5165\u76ee\u6807\u5e73\u53f0', 'en-US'),
+    'Register a local Agent Identity and import it into the target platform'
+  );
+});
+
 test('sidepanel static i18n translates dynamic user-facing patterns', () => {
   const i18n = loadSidepanelStaticI18n();
 

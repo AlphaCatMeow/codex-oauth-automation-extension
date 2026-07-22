@@ -73,3 +73,18 @@ test('OpenAI target capability matrix declares defaults and routes for every sup
     });
   });
 });
+
+test('OpenAI exposes account delivery as an independent settings group', () => {
+  const { flowRegistry } = loadApis();
+  const flow = flowRegistry.getFlowDefinition('openai');
+
+  assert.ok(flow.baseGroups.includes('openai-account-delivery'));
+  assert.deepEqual(
+    flow.settingsGroups['openai-account-delivery'].rowIds,
+    ['row-account-delivery-mode']
+  );
+  assert.doesNotMatch(
+    JSON.stringify(flow.settingsGroups['openai-plus']),
+    /account-delivery|account-access/
+  );
+});

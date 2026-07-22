@@ -45,6 +45,7 @@
     "targetSelectorLabel": "来源"
   },
   "baseGroups": [
+    "openai-account-delivery",
     "openai-plus",
     "shared-auto-run",
     "openai-oauth",
@@ -459,6 +460,13 @@
   },
   "defaultTargetId": "cpa",
   "settingsGroups": {
+    "openai-account-delivery": {
+      "id": "openai-account-delivery",
+      "label": "账号交付",
+      "rowIds": [
+        "row-account-delivery-mode"
+      ]
+    },
     "openai-target-cpa": {
       "id": "openai-target-cpa",
       "label": "CPA 来源",
@@ -516,7 +524,6 @@
       "label": "Plus",
       "rowIds": [
         "row-plus-mode",
-        "row-plus-account-access-strategy",
         "row-plus-payment-method"
       ]
     },

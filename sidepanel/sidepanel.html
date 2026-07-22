@@ -124,6 +124,13 @@
             aria-label="打开项目 GitHub 仓库" title="打开项目 GitHub 仓库">GitHub</button>
         </div>
       </div>
+      <div class="data-row" id="row-account-delivery-mode" style="display:none;">
+        <span class="data-label">账号交付</span>
+        <div class="setting-field-stack">
+          <select id="select-account-delivery-mode" class="data-select" aria-label="账号交付方式"></select>
+          <span class="setting-caption" id="account-delivery-mode-caption"></span>
+        </div>
+      </div>
         <div id="contribution-mode-panel" class="contribution-mode-panel" hidden>
           <div class="contribution-mode-panel-header">
             <span class="section-label">贡献模式</span>
@@ -438,16 +445,6 @@
             </label>
           </div>
           <span class="setting-caption">Plus 订阅链路</span>
-        </div>
-      </div>
-      <div class="data-row" id="row-plus-account-access-strategy" style="display:none;">
-        <span class="data-label">账号接入策略</span>
-        <div class="data-inline">
-          <select id="select-plus-account-access-strategy" class="data-select">
-            <option value="oauth">OAuth</option>
-            <option value="codex_session">使用会话 JSON 导入</option>
-          </select>
-          <span class="setting-caption" id="plus-account-access-strategy-caption">当前来源仅支持 OAuth</span>
         </div>
       </div>
       <div class="data-row" id="row-plus-payment-method" style="display:none;">
@@ -2021,6 +2018,7 @@
   <script src="i18n-static.js"></script>
   <script src="../core/flow-kernel/settings-schema.js"></script>
   <script src="../core/flow-kernel/flow-capabilities.js"></script>
+  <script src="account-delivery-control.js"></script>
   <script src="../data/step-definitions.js"></script>
   <script src="update-service.js"></script>
   <script src="contribution-content-update-service.js"></script>
