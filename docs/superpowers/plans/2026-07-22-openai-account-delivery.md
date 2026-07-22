@@ -55,11 +55,11 @@ UTF-8 检查使用抛出异常的严格解码读取本阶段修改文件，并�
 - Modify: `docs/superpowers/specs/2026-07-22-openai-account-delivery-design.md`
 - Create: `docs/superpowers/plans/2026-07-22-openai-account-delivery.md`
 
-- [ ] **Step 1: 写入 PR #307 的安全约束**
+- [x] **Step 1: 写入 PR #307 的安全约束**
 
 规格必须明确：session reader 支持 `requiredFields`；首次等待 1 秒、间隔 2 秒、最多 11 次；只重试未就绪；SUB2API 预检先于 Agent 注册；注册后的导入重试复用同一内存 `auth.json`；不得整步重试或回退 Session。
 
-- [ ] **Step 2: 运行文档自检**
+- [x] **Step 2: 运行文档自检**
 
 ```powershell
 rg -n "T[B]D|T[O]DO|implement[ ]later|fill[ ]in[ ]details" docs/superpowers/specs/2026-07-22-openai-account-delivery-design.md docs/superpowers/plans/2026-07-22-openai-account-delivery.md
@@ -69,7 +69,7 @@ npm test
 
 预期：占位符搜索无输出，diff 检查和完整测试退出码均为 0。
 
-- [ ] **Step 3: 提交阶段 0**
+- [x] **Step 3: 提交阶段 0**
 
 ```powershell
 git add docs/superpowers/specs/2026-07-22-openai-account-delivery-design.md docs/superpowers/plans/2026-07-22-openai-account-delivery.md
@@ -90,7 +90,7 @@ git commit -m "docs: 补充 OpenAI 账号交付实施计划"
 - Modify: `sidepanel/sidepanel.html`
 - Modify: `项目文件结构说明.md`
 
-- [ ] **Step 1: 写交付注册表失败测试并确认 RED**
+- [x] **Step 1: 写交付注册表失败测试并确认 RED**
 
 测试期待以下公开接口：
 
@@ -113,7 +113,7 @@ node --test tests/openai-account-delivery.test.js tests/flow-capabilities-module
 
 预期：因模块和通用 capability 字段不存在而失败。
 
-- [ ] **Step 2: 实现模式模块和目标矩阵**
+- [x] **Step 2: 实现模式模块和目标矩阵**
 
 `flows/openai/account-delivery.js` 输出冻结定义：
 
@@ -125,9 +125,9 @@ node --test tests/openai-account-delivery.test.js tests/flow-capabilities-module
 }
 ```
 
-OpenAI target capability 写入设计中的支持列表、默认值与 route；删除 `supportedPlusAccountAccessStrategies`。`flow-capabilities.js` 输出 `requestedAccountDeliveryMode`、`availableAccountDeliveryModes`、`effectiveAccountDeliveryMode`、`effectiveAccountDeliveryRouteId`、`canShowAccountDeliveryControl` 和 `canEditAccountDeliveryMode`；贡献模式固定 CPA OAuth，运行或设置锁使控件不可编辑但不覆盖保存值。
+OpenAI target capability 写入设计中的支持列表、默认值与 route；旧 `supportedPlusAccountAccessStrategies` 仅为阶段 4 原子切换前的兼容字段，不再作为新能力的事实源。`flow-capabilities.js` 输出 `requestedAccountDeliveryMode`、`availableAccountDeliveryModes`、`effectiveAccountDeliveryMode`、`effectiveAccountDeliveryRouteId`、`canShowAccountDeliveryControl` 和 `canEditAccountDeliveryMode`；贡献模式固定 OAuth，运行或设置锁使控件不可编辑但不覆盖保存值。
 
-- [ ] **Step 3: 验证 GREEN 与阶段门禁**
+- [x] **Step 3: 验证 GREEN 与阶段门禁**
 
 运行定向测试、全部修改 JS 的 `node --check`、完整 `npm test`、乱码检查和 `git diff --check`。
 

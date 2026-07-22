@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 
 const FLOW_DEFINITION_FILES = Object.freeze([
+  'flows/openai/account-delivery.js',
   'flows/openai/index.js',
   'flows/kiro/index.js',
   'flows/grok/index.js',

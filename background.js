@@ -1,6 +1,7 @@
 // background.js — Service Worker: orchestration, state, tab management, message routing
 
 importScripts(
+  'flows/openai/account-delivery.js',
   'flows/openai/index.js',
   'flows/openai/workflow.js',
   'flows/kiro/index.js',

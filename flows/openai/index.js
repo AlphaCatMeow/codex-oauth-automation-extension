@@ -505,6 +505,15 @@
       "supportsPhoneSignup": true,
       "requiresPhoneSignupWarning": true,
       "usesOauthTimeoutBudget": true,
+      "supportedAccountDeliveryModes": [
+        "oauth",
+        "session"
+      ],
+      "defaultAccountDeliveryMode": "oauth",
+      "accountDeliveryRouteByMode": {
+        "oauth": "oauth",
+        "session": "cpa-session"
+      },
       "supportedPlusAccountAccessStrategies": [
         "oauth",
         "cpa_codex_session"
@@ -513,6 +522,17 @@
     "sub2api": {
       "supportsPhoneSignup": true,
       "requiresPhoneSignupWarning": false,
+      "supportedAccountDeliveryModes": [
+        "oauth",
+        "session",
+        "agent_identity"
+      ],
+      "defaultAccountDeliveryMode": "oauth",
+      "accountDeliveryRouteByMode": {
+        "oauth": "oauth",
+        "session": "sub2api-session",
+        "agent_identity": "sub2api-agent-identity"
+      },
       "supportedPlusAccountAccessStrategies": [
         "oauth",
         "sub2api_codex_session"
@@ -521,6 +541,13 @@
     "codex2api": {
       "supportsPhoneSignup": true,
       "requiresPhoneSignupWarning": false,
+      "supportedAccountDeliveryModes": [
+        "oauth"
+      ],
+      "defaultAccountDeliveryMode": "oauth",
+      "accountDeliveryRouteByMode": {
+        "oauth": "oauth"
+      },
       "supportedPlusAccountAccessStrategies": [
         "oauth"
       ]
@@ -529,6 +556,13 @@
       "supportsPhoneSignup": false,
       "supportsPhoneVerificationSettings": false,
       "requiresPhoneSignupWarning": false,
+      "supportedAccountDeliveryModes": [
+        "session"
+      ],
+      "defaultAccountDeliveryMode": "session",
+      "accountDeliveryRouteByMode": {
+        "session": "webchat-session"
+      },
       "supportedPlusAccountAccessStrategies": [
         "oauth"
       ]
@@ -537,6 +571,13 @@
       "supportsPhoneSignup": false,
       "supportsPhoneVerificationSettings": false,
       "requiresPhoneSignupWarning": false,
+      "supportedAccountDeliveryModes": [
+        "session"
+      ],
+      "defaultAccountDeliveryMode": "session",
+      "accountDeliveryRouteByMode": {
+        "session": "chatgpt2api-session"
+      },
       "supportedPlusAccountAccessStrategies": [
         "oauth"
       ]
