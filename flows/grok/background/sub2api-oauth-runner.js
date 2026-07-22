@@ -6,6 +6,7 @@
   const AUTHORIZATION_TIMEOUT_MS = 180000;
   const AUTHORIZATION_PAGE_READY_TIMEOUT_MS = 30000;
   const AUTHORIZATION_PAGE_READY_POLL_INTERVAL_MS = 500;
+  const DIAGNOSTIC_LOG_PREFIX = '[Grok OAuth 诊断]';
   const SESSION_FRESHNESS_MS = 25 * 60 * 1000;
 
   function isPlainObject(value) {
@@ -118,6 +119,26 @@
       await addLog(message, level, nodeId ? { nodeId } : {});
     }
 
+    async function logDiagnostic(message, nodeId = '', level = 'info') {
+      await log(`${DIAGNOSTIC_LOG_PREFIX} ${message}`, level, nodeId);
+    }
+
+    function summarizePageState(pageState = {}) {
+      const diagnostic = isPlainObject(pageState?.diagnostic) ? pageState.diagnostic : {};
+      return [
+        `state=${cleanString(pageState?.state) || 'unknown'}`,
+        `host=${cleanString(diagnostic.host) || 'unknown'}`,
+        `path=${cleanString(diagnostic.path) || 'unknown'}`,
+        `ready=${cleanString(diagnostic.readyState) || 'unknown'}`,
+        `visible=${Number.isFinite(Number(diagnostic.visibleActionCount)) ? Number(diagnostic.visibleActionCount) : 'unknown'}`,
+        `allow=${Number.isFinite(Number(diagnostic.allowActionCount)) ? Number(diagnostic.allowActionCount) : 'unknown'}`,
+      ].join('; ');
+    }
+
+    function getPageStateFingerprint(pageState = {}, channel = '') {
+      return `${channel}:${summarizePageState(pageState)}`;
+    }
+
     async function applyRuntimeState(currentState = {}, patch = {}) {
       const statePatch = buildRuntimePatch(currentState, patch);
       await setState(statePatch);
@@ -208,7 +229,8 @@
           targetUrl: context.targetUrl,
         },
       });
-      await waitForAuthorizationPageReady(tabId);
+      await logDiagnostic(`已打开授权标签页 ${tabId}，正在等待页面就绪。`, nodeId);
+      await waitForAuthorizationPageReady(tabId, nodeId);
       await log('SUB2API OAuth 授权页已加载完成。', 'ok', nodeId);
       if (options.completeNode !== false) {
         await completeNodeFromBackground(nodeId, payload);
@@ -216,7 +238,7 @@
       return { context, payload, tabId };
     }
 
-    async function prepareAuthorizationTab(tabId) {
+    async function prepareAuthorizationTab(tabId, nodeId = '', diagnostics = false) {
       if (typeof waitForTabStableComplete === 'function') {
         await waitForTabStableComplete(tabId, {
           timeoutMs: 30000,
@@ -224,6 +246,9 @@
           stableMs: 800,
           initialDelayMs: 100,
         });
+        if (diagnostics) {
+          await logDiagnostic(`标签页 ${tabId}：Chrome 页面加载已稳定。`, nodeId);
+        }
       }
       if (typeof ensureContentScriptReadyOnTab === 'function') {
         await ensureContentScriptReadyOnTab(SOURCE_ID, tabId, {
@@ -233,6 +258,9 @@
           retryDelayMs: 500,
           logMessage: '正在连接 Grok OAuth 授权页...',
         });
+        if (diagnostics) {
+          await logDiagnostic(`标签页 ${tabId}：OAuth 内容脚本 PING 已连通。`, nodeId);
+        }
       }
     }
 
@@ -265,18 +293,100 @@
       return result || { state: 'loading' };
     }
 
-    async function waitForAuthorizationPageReady(tabId) {
-      await prepareAuthorizationTab(tabId);
+    async function runAuthorizationPageScript(tabId, action = 'inspect-state') {
+      if (!Number.isInteger(tabId) || !chrome?.scripting?.executeScript) return null;
+      try {
+        const executions = await chrome.scripting.executeScript({
+          target: { tabId },
+          args: [action],
+          func: (requestedAction) => {
+            const cleanText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
+            const isVisible = (element) => {
+              const style = window.getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && rect.width > 0
+                && rect.height > 0;
+            };
+            const actionElements = Array.from(document.querySelectorAll(
+              'button, [role="button"], input[type="button"], input[type="submit"]'
+            ));
+            const visibleActions = actionElements.filter((element) => isVisible(element));
+            const allowActions = visibleActions.filter((element) => {
+              const texts = [
+                element.textContent,
+                element.value,
+                element.getAttribute('aria-label'),
+                element.getAttribute('title'),
+              ].map(cleanText).filter(Boolean);
+              return !element.disabled
+                && element.getAttribute('aria-disabled') !== 'true'
+                && texts.some((text) => /^(?:允许|Allow|Authorize|Continue)$/i.test(text));
+            });
+            const diagnostic = {
+              host: location.hostname,
+              path: location.pathname,
+              readyState: document.readyState,
+              visibleActionCount: visibleActions.length,
+              allowActionCount: allowActions.length,
+            };
+            const pageText = cleanText(`${document.title || ''} ${document.body?.textContent || ''}`);
+            if (/授权失败|拒绝授权|authorization (?:failed|denied)|access denied|something went wrong/i.test(pageText)) {
+              return { state: 'error_page', error: 'Grok OAuth 授权页面显示失败。', diagnostic };
+            }
+            const isConsentPage = /授权\s*Grok Build|Authorize\s+Grok Build/i.test(pageText);
+            const consentAction = isConsentPage ? allowActions[0] || null : null;
+            if (consentAction) {
+              if (requestedAction === 'confirm-consent') {
+                consentAction.click();
+                return { state: 'consent_submitted', clicked: true, diagnostic };
+              }
+              return { state: 'consent_page', diagnostic };
+            }
+            if (/输入此代码以完成登录|Enter this code to (?:complete|finish) (?:sign[ -]?in|login)|copy (?:the )?code to Grok Build/i.test(pageText)) {
+              return { state: 'code_page', diagnostic };
+            }
+            if (!isConsentPage) {
+              return { state: 'loading', diagnostic };
+            }
+            return { state: 'consent_waiting', diagnostic };
+          },
+        });
+        const result = executions?.map((entry) => entry?.result).find(isPlainObject);
+        return result || null;
+      } catch {
+        return null;
+      }
+    }
+
+    async function inspectAuthorizationPageDirectly(tabId) {
+      return runAuthorizationPageScript(tabId, 'inspect-state');
+    }
+
+    async function waitForAuthorizationPageReady(tabId, nodeId = '') {
+      await prepareAuthorizationTab(tabId, nodeId, true);
       const maxAttempts = Math.max(
         1,
         Math.ceil(AUTHORIZATION_PAGE_READY_TIMEOUT_MS / AUTHORIZATION_PAGE_READY_POLL_INTERVAL_MS)
       );
       let lastState = 'loading';
+      let lastFingerprint = '';
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         throwIfStopped();
-        const pageState = await readPageState();
+        const directPageState = await inspectAuthorizationPageDirectly(tabId);
+        const pageState = directPageState || await readPageState();
         lastState = cleanString(pageState?.state) || 'loading';
+        const fingerprint = getPageStateFingerprint(pageState, directPageState ? 'dom' : 'content');
+        if (fingerprint !== lastFingerprint) {
+          await logDiagnostic(
+            `页面状态变更（${directPageState ? '后台 DOM' : '内容脚本'}）：${summarizePageState(pageState)}。`,
+            '',
+            lastState === 'error_page' ? 'warn' : 'info'
+          );
+          lastFingerprint = fingerprint;
+        }
         if (lastState === 'consent_page' || lastState === 'code_page') {
           return pageState;
         }
@@ -307,47 +417,7 @@
     }
 
     async function confirmConsentDirectly(tabId) {
-      if (!Number.isInteger(tabId) || !chrome?.scripting?.executeScript) return false;
-      try {
-        const executions = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: () => {
-            const cleanText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
-            const isVisible = (element) => {
-              const style = window.getComputedStyle(element);
-              const rect = element.getBoundingClientRect();
-              return style.display !== 'none'
-                && style.visibility !== 'hidden'
-                && rect.width > 0
-                && rect.height > 0;
-            };
-            const pageText = cleanText(`${document.title || ''} ${document.body?.textContent || ''}`);
-            if (!/授权\s*Grok Build|Authorize\s+Grok Build/i.test(pageText)) {
-              return { clicked: false };
-            }
-            const action = Array.from(document.querySelectorAll(
-              'button, [role="button"], input[type="button"], input[type="submit"]'
-            )).find((element) => {
-              const text = cleanText([
-                element.textContent,
-                element.value,
-                element.getAttribute('aria-label'),
-                element.getAttribute('title'),
-              ].filter(Boolean).join(' '));
-              return !element.disabled
-                && element.getAttribute('aria-disabled') !== 'true'
-                && isVisible(element)
-                && /^(?:允许|Allow|Authorize|Continue)$/i.test(text);
-            });
-            if (!action) return { clicked: false };
-            action.click();
-            return { clicked: true };
-          },
-        });
-        return Boolean(executions?.some((entry) => entry?.result?.clicked));
-      } catch {
-        return false;
-      }
+      return runAuthorizationPageScript(tabId, 'confirm-consent');
     }
 
     async function persistFailure(currentState = {}, message = '', targetUrl = '') {
@@ -428,10 +498,19 @@
         });
         const deadline = now() + AUTHORIZATION_TIMEOUT_MS;
         let consentSubmitted = false;
+        let lastDirectFingerprint = '';
+        let lastContentFingerprint = '';
         while (now() < deadline) {
           throwIfStopped();
           if (!consentSubmitted) {
-            if (await confirmConsentDirectly(tabId)) {
+            const directConsentResult = await confirmConsentDirectly(tabId);
+            const directFingerprint = getPageStateFingerprint(directConsentResult || {}, 'dom');
+            if (directFingerprint !== lastDirectFingerprint) {
+              await logDiagnostic(`授权页状态：${summarizePageState(directConsentResult || {})}。`, nodeId);
+              lastDirectFingerprint = directFingerprint;
+            }
+            if (directConsentResult?.clicked) {
+              await logDiagnostic(`标签页 ${tabId} 已点击允许，等待 OAuth 代码页。`, nodeId);
               await log('正在自动确认 Grok OAuth 授权...', 'info', nodeId);
               consentSubmitted = true;
               await sleepWithStop(800);
@@ -440,6 +519,11 @@
             }
           }
           const pageState = await readPageState();
+          const contentFingerprint = getPageStateFingerprint(pageState, 'content');
+          if (contentFingerprint !== lastContentFingerprint) {
+            await logDiagnostic(`内容脚本状态：state=${cleanString(pageState?.state) || 'unknown'}。`, nodeId);
+            lastContentFingerprint = contentFingerprint;
+          }
           if (pageState.state === 'consent_page') {
             if (!consentSubmitted) {
               await log('正在自动确认 Grok OAuth 授权...', 'info', nodeId);

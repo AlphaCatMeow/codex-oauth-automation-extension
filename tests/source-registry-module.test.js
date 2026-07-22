@@ -139,6 +139,13 @@ test('shared source registry exposes canonical Kiro sources and drivers', () => 
   );
   assert.equal(
     registry.detectSourceFromLocation({
+      url: 'https://accounts.x.ai/oauth2/consent?response_type=code',
+      hostname: 'accounts.x.ai',
+    }),
+    'grok-sub2api-oauth-page'
+  );
+  assert.equal(
+    registry.detectSourceFromLocation({
       url: 'https://example.com/',
       hostname: 'example.com',
     }),

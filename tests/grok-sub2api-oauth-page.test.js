@@ -30,6 +30,19 @@ test('Grok SUB2API OAuth page detects Chinese and English consent actions', () =
   });
 });
 
+test('Grok SUB2API OAuth page prioritizes a visible allow action over code-like consent copy', () => {
+  const api = loadApi();
+
+  assert.deepEqual(api.classifyPageSnapshot({
+    pageText: '授权 Grok Build 输入此代码以完成登录',
+    actionTexts: ['拒绝', '允许'],
+    codeCandidates: [],
+  }), {
+    state: 'consent_page',
+    actionIndex: 1,
+  });
+});
+
 test('Grok SUB2API OAuth page reads only a visible code-page value', () => {
   const api = loadApi();
   const code = 'ilUTmu195dD7ZtMI-huPjKMXjR65M6K-dloR3XzL1vTnypRYqC';
