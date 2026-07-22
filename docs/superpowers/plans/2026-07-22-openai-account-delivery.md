@@ -194,7 +194,7 @@ rg -n "PLUS_CHECKOUT_GET_STATE|PLUS_CHECKOUT_SOURCE" flows/openai/background/ses
 
 预期无输出；随后执行阶段通用门禁。
 
-- [ ] **Step 5: 提交阶段 2**
+- [x] **Step 5: 提交阶段 2**
 
 ```powershell
 git commit -m "refactor: 统一 OpenAI 会话读取协议"
@@ -206,11 +206,12 @@ git commit -m "refactor: 统一 OpenAI 会话读取协议"
 - Create: `flows/openai/background/agent-identity.js`
 - Create: `flows/openai/background/steps/sub2api-agent-identity-import.js`
 - Create: `tests/background-openai-agent-identity.test.js`
+- Create: `tests/background-sub2api-agent-identity-import.test.js`
 - Modify: `background/sub2api-api.js`
 - Modify: `tests/background-sub2api-session-import.test.js`
 - Modify: `项目文件结构说明.md`
 
-- [ ] **Step 1: 写协议编码和错误边界失败测试**
+- [x] **Step 1: 写协议编码和错误边界失败测试**
 
 测试公开纯函数与工厂：
 
@@ -223,7 +224,7 @@ createAgentIdentity(accessToken, session, { cryptoImpl, fetchImpl })
 
 用固定 32 字节 public key 断言 OpenSSH blob 为 `uint32('ssh-ed25519') + utf8('ssh-ed25519') + uint32(32) + rawKey` 的 Base64；私钥精确等于 PKCS#8 bytes 的 Base64。覆盖 `chatgpt_account_id`、`chatgpt_user_id / user_id / sub` 优先级、缺失 claims、无 Ed25519、非 2xx、无 `agent_runtime_id` 和错误脱敏。
 
-- [ ] **Step 2: 写 SUB2API 预检和不可逆边界失败测试**
+- [x] **Step 2: 写 SUB2API 预检和不可逆边界失败测试**
 
 共享 API 契约固定为：
 
@@ -238,11 +239,11 @@ await client.importPreparedCodexAuth(prepared, {
 
 断言登录、分组和代理解析全部发生在 `createAgentIdentity` 前；注册成功后的导入可重试时复用同一对象引用和同一个 `agent_runtime_id`，Agent 注册仅调用一次；session 与 agent 两种 auth JSON 使用同一个 payload builder、warnings 和计数解析器。
 
-- [ ] **Step 3: 实现独立 Agent Identity 模块和步骤**
+- [x] **Step 3: 实现独立 Agent Identity 模块和步骤**
 
 `AGENT_VERSION = '0.138.0-alpha.6'` 只存在于 `agent-identity.js`。步骤执行顺序为 Stop 检查、SUB2API 预检、读取 accessToken、生成并注册 Agent、导入同一内存 `authJson`、写脱敏日志、完成节点。不得把 accessToken、私钥或完整 auth JSON 传给 `setState`、日志或错误文本。
 
-- [ ] **Step 4: 验证 GREEN、敏感数据扫描与阶段门禁**
+- [x] **Step 4: 验证 GREEN、敏感数据扫描与阶段门禁**
 
 ```powershell
 rg -n "0\.138\.0-alpha\.6|agent_private_key|Authorization.*Bearer" flows/openai/background background/sub2api-api.js
@@ -250,7 +251,7 @@ rg -n "0\.138\.0-alpha\.6|agent_private_key|Authorization.*Bearer" flows/openai/
 
 确认版本常量唯一，敏感字段仅存在于协议构造/序列化边界；随后执行阶段通用门禁。
 
-- [ ] **Step 5: 提交阶段 3**
+- [x] **Step 5: 提交阶段 3**
 
 ```powershell
 git commit -m "feat: 实现 SUB2API Agent Identity 交付"

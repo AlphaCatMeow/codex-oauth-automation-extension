@@ -103,6 +103,9 @@ test('sub2api api imports current ChatGPT session through codex-session endpoint
             warnings: [{
               index: 1,
               message: '未包含 refresh_token，accessToken 过期后无法自动续期',
+            }, {
+              index: 2,
+              message: '服务端回显必须脱敏：access-token-from-state',
             }],
           },
         });
@@ -143,6 +146,7 @@ test('sub2api api imports current ChatGPT session through codex-session endpoint
     logs.some((entry) => entry.level === 'warn' && /refresh_token/.test(entry.message)),
     true
   );
+  assert.equal(JSON.stringify(logs).includes('access-token-from-state'), false);
 });
 
 test('sub2api session import falls back to JWT email before registration email', async () => {
@@ -252,6 +256,167 @@ test('sub2api session import falls back to registration email when session has n
 
   assert.ok(importBody, 'expected codex-session import call');
   assert.equal(importBody.name, 'registration@example.com');
+});
+
+test('sub2api codex import shares one preflight and payload boundary for Agent Identity auth.json', async () => {
+  const apiModule = loadSub2ApiApiModule();
+  const fetchCalls = [];
+  const logs = [];
+  let importBody = null;
+  const authJson = {
+    auth_mode: 'agent_identity',
+    agent_identity: {
+      agent_runtime_id: 'agent-runtime-123',
+      agent_private_key: 'private-key-base64',
+      account_id: 'account-123',
+      chatgpt_user_id: 'user-123',
+      email: 'owner@example.com',
+      plan_type: 'plus',
+      chatgpt_account_is_fedramp: false,
+    },
+  };
+
+  const api = apiModule.createSub2ApiApi({
+    addLog: async (message, level = 'info', options = {}) => {
+      logs.push({ message, level, options });
+    },
+    normalizeSub2ApiUrl: (value) => value,
+    DEFAULT_SUB2API_GROUP_NAME: 'codex',
+    fetchImpl: async (url, options = {}) => {
+      const parsed = new URL(url);
+      const body = options.body ? JSON.parse(options.body) : null;
+      fetchCalls.push({ path: parsed.pathname, method: options.method || 'GET', body });
+
+      if (parsed.pathname === '/api/v1/auth/login') {
+        return createJsonResponse({ code: 0, data: { access_token: 'admin-token' } });
+      }
+      if (parsed.pathname === '/api/v1/admin/groups/all') {
+        return createJsonResponse({
+          code: 0,
+          data: [{ id: 5, name: 'codex', platform: 'openai' }],
+        });
+      }
+      if (parsed.pathname === '/api/v1/admin/proxies/all') {
+        return createJsonResponse({
+          code: 0,
+          data: [{ id: 7, name: 'shadowrocket', status: 'active' }],
+        });
+      }
+      if (parsed.pathname === '/api/v1/admin/accounts/import/codex-session') {
+        importBody = body;
+        return createJsonResponse({
+          code: 0,
+          data: {
+            total: 1,
+            created: 1,
+            updated: 0,
+            skipped: 0,
+            failed: 0,
+            warnings: [{ message: 'private-key-base64 must stay redacted' }],
+          },
+        });
+      }
+
+      return createJsonResponse({ code: 1, message: `unexpected path ${parsed.pathname}` }, 404);
+    },
+  });
+
+  const state = {
+    sub2apiUrl: 'https://sub.example/admin/accounts',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+    sub2apiGroupName: 'codex',
+    sub2apiDefaultProxyName: 'shadowrocket',
+    sub2apiAccountPriority: 2,
+  };
+  const prepared = await api.prepareCodexSessionImport(state, {
+    logLabel: '步骤 10',
+    logOptions: { step: 10, stepKey: 'sub2api-agent-identity-import' },
+  });
+  const result = await api.importPreparedCodexAuth(prepared, {
+    authJson,
+    accountName: 'owner@example.com',
+    expiresAt: null,
+  }, {
+    logLabel: '步骤 10',
+    resultLabel: 'SUB2API Agent Identity 导入完成',
+    logOptions: { step: 10, stepKey: 'sub2api-agent-identity-import' },
+  });
+
+  assert.deepEqual(fetchCalls.map((call) => call.path), [
+    '/api/v1/auth/login',
+    '/api/v1/admin/groups/all',
+    '/api/v1/admin/proxies/all',
+    '/api/v1/admin/accounts/import/codex-session',
+  ]);
+  assert.equal(prepared.origin, 'https://sub.example');
+  assert.equal(prepared.token, 'admin-token');
+  assert.deepEqual(prepared.groupIds, [5]);
+  assert.equal(prepared.proxyId, 7);
+  assert.equal(prepared.accountPriority, 2);
+  assert.ok(importBody, 'expected prepared codex import call');
+  assert.deepEqual(JSON.parse(importBody.content), authJson);
+  assert.equal(importBody.name, 'owner@example.com');
+  assert.deepEqual(importBody.group_ids, [5]);
+  assert.equal(importBody.proxy_id, 7);
+  assert.equal(importBody.priority, 2);
+  assert.equal(Object.prototype.hasOwnProperty.call(importBody, 'expires_at'), false);
+  assert.equal(result.verifiedStatus, 'SUB2API Agent Identity 导入完成：新建 1，更新 0，跳过 0，失败 0');
+  assert.equal(result.sub2apiImportCreated, 1);
+  assert.equal(JSON.stringify(logs).includes('private-key-base64'), false);
+});
+
+test('sub2api prepared import preserves retryable HTTP status and redacts auth secrets', async () => {
+  const apiModule = loadSub2ApiApiModule();
+  const privateKey = 'private-key-that-must-not-leak';
+  let requestCount = 0;
+  const api = apiModule.createSub2ApiApi({
+    addLog: async () => {},
+    normalizeSub2ApiUrl: (value) => value,
+    DEFAULT_SUB2API_GROUP_NAME: 'codex',
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      requestCount += 1;
+      if (parsed.pathname === '/api/v1/auth/login') {
+        return createJsonResponse({ code: 0, data: { access_token: 'admin-token' } });
+      }
+      if (parsed.pathname === '/api/v1/admin/groups/all') {
+        return createJsonResponse({ code: 0, data: [{ id: 5, name: 'codex', platform: 'openai' }] });
+      }
+      if (parsed.pathname === '/api/v1/admin/accounts/import/codex-session') {
+        return createJsonResponse({ message: `temporarily unavailable: ${privateKey}` }, 503);
+      }
+      return createJsonResponse({ code: 1, message: `unexpected path ${parsed.pathname}` }, 404);
+    },
+  });
+
+  const prepared = await api.prepareCodexSessionImport({
+    sub2apiUrl: 'https://sub.example/admin/accounts',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+    sub2apiGroupName: 'codex',
+  });
+  await assert.rejects(
+    () => api.importPreparedCodexAuth(prepared, {
+      authJson: {
+        auth_mode: 'agent_identity',
+        agent_identity: {
+          agent_runtime_id: 'agent-runtime-123',
+          agent_private_key: privateKey,
+          email: 'owner@example.com',
+        },
+      },
+      accountName: 'owner@example.com',
+      expiresAt: null,
+    }),
+    (error) => {
+      assert.equal(error.status, 503);
+      assert.match(error.message, /temporarily unavailable/);
+      assert.equal(error.message.includes(privateKey), false);
+      return true;
+    }
+  );
+  assert.equal(requestCount, 3);
 });
 
 test('session import step delegates session acquisition to the shared reader', async () => {
