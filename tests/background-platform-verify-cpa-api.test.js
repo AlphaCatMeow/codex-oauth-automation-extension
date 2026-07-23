@@ -316,6 +316,7 @@ test('platform verify module submits Plus visible step 13 to SUB2API via direct 
     assert.equal(exchangeCall.body.code, 'callback-code');
     assert.equal(exchangeCall.body.state, 'oauth-state');
     assert.deepStrictEqual(createCall.body.group_ids, [5]);
+    assert.equal(createCall.body.concurrency, 1);
     assert.deepStrictEqual(completed, [{
       step: 'platform-verify',
       payload: {

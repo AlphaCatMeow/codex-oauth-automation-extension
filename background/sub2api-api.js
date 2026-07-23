@@ -13,7 +13,8 @@
 
     const DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback';
     const DEFAULT_PROXY_NAME = '';
-    const DEFAULT_CONCURRENCY = 10;
+    const DEFAULT_OPENAI_SUB2API_CONCURRENCY = 1;
+    const DEFAULT_GROK_SUB2API_CONCURRENCY = 1;
     const DEFAULT_PRIORITY = 1;
     const DEFAULT_RATE_MULTIPLIER = 1;
     const GROK_OAUTH_AUTH_URL_PATH = '/api/v1/admin/grok/oauth/auth-url';
@@ -400,7 +401,7 @@
         name: accountName,
         ...(proxyId ? { proxy_id: proxyId } : {}),
         group_ids: groupIds,
-        concurrency: DEFAULT_CONCURRENCY,
+        concurrency: DEFAULT_GROK_SUB2API_CONCURRENCY,
         priority: accountPriority,
       };
       await logWithOptions(`${logLabel}：正在创建 Grok OAuth 账号...`, 'info', options);
@@ -987,7 +988,7 @@
         platform: 'openai',
         type: 'oauth',
         credentials,
-        concurrency: DEFAULT_CONCURRENCY,
+        concurrency: DEFAULT_OPENAI_SUB2API_CONCURRENCY,
         priority: accountPriority,
         rate_multiplier: DEFAULT_RATE_MULTIPLIER,
         group_ids: groupIds,
@@ -1072,6 +1073,7 @@
           content: authContent,
           group_ids: groupIds,
           ...(accountName ? { name: accountName } : {}),
+          concurrency: DEFAULT_OPENAI_SUB2API_CONCURRENCY,
           priority: accountPriority,
           auto_pause_on_expired: true,
           update_existing: true,

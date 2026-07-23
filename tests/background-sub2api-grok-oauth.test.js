@@ -115,7 +115,7 @@ test('SUB2API API creates the Grok OAuth account with the registration email as 
     name: 'round@example.com',
     proxy_id: 7,
     group_ids: [31],
-    concurrency: 10,
+    concurrency: 1,
     priority: 4,
   });
   assert.equal(Object.prototype.hasOwnProperty.call(createRequest.body, 'rate_multiplier'), false);

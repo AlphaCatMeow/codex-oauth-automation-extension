@@ -87,6 +87,7 @@ test('sub2api api imports current ChatGPT session through codex-session endpoint
         assert.equal(parsedContent.user?.email, 'flow@example.com');
         assert.equal(body.name, 'flow@example.com');
         assert.equal(body.priority, 3);
+        assert.equal(body.concurrency, 1);
         assert.equal(body.proxy_id, 7);
         assert.deepStrictEqual(body.group_ids, [5]);
         assert.equal(body.auto_pause_on_expired, true);
@@ -360,6 +361,7 @@ test('sub2api codex import shares one preflight and payload boundary for Agent I
   assert.deepEqual(importBody.group_ids, [5]);
   assert.equal(importBody.proxy_id, 7);
   assert.equal(importBody.priority, 2);
+  assert.equal(importBody.concurrency, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(importBody, 'expires_at'), false);
   assert.equal(result.verifiedStatus, 'SUB2API Agent Identity 导入完成：新建 1，更新 0，跳过 0，失败 0');
   assert.equal(result.sub2apiImportCreated, 1);
