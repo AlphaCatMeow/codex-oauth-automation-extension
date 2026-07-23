@@ -1,7 +1,8 @@
 (function attachBackgroundSub2ApiAgentIdentityImport(root, factory) {
   root.MultiPageBackgroundSub2ApiAgentIdentityImport = factory();
 })(typeof self !== 'undefined' ? self : globalThis, function createBackgroundSub2ApiAgentIdentityImportModule() {
-  const IMPORT_RETRY_DELAY_MS = 1000;
+  const SUB2API_RETRY_DELAY_MS = 10 * 1000;
+  const SUB2API_RETRY_WINDOW_MS = 5 * 60 * 1000;
 
   function normalizeString(value = '') {
     return String(value || '').trim();
@@ -35,6 +36,7 @@
       normalizeSub2ApiUrl = (value) => value,
       throwIfStopped = () => {},
       sleepWithStop = async () => {},
+      now = () => Date.now(),
       DEFAULT_SUB2API_GROUP_NAME = 'codex',
     } = deps;
 
@@ -46,6 +48,59 @@
         step,
         stepKey: 'sub2api-agent-identity-import',
       });
+    }
+
+    function getNowMs() {
+      const timestamp = Number(now());
+      return Number.isFinite(timestamp) ? timestamp : Date.now();
+    }
+
+    async function retrySub2ApiOperation(operation, visibleStep, operationLabel) {
+      let retryDeadlineMs = null;
+      let lastRetryableError = null;
+      let retryCount = 0;
+
+      while (true) {
+        throwIfStopped();
+        if (retryDeadlineMs !== null && getNowMs() > retryDeadlineMs) {
+          throw lastRetryableError;
+        }
+
+        try {
+          return await operation();
+        } catch (error) {
+          throwIfStopped();
+          if (!isRetryableSub2ApiImportError(error)) {
+            throw error;
+          }
+
+          const currentTimeMs = getNowMs();
+          if (retryDeadlineMs === null) {
+            retryDeadlineMs = currentTimeMs + SUB2API_RETRY_WINDOW_MS;
+          }
+          lastRetryableError = error;
+          if (currentTimeMs >= retryDeadlineMs) {
+            throw error;
+          }
+
+          const retryDelayMs = Math.min(
+            SUB2API_RETRY_DELAY_MS,
+            retryDeadlineMs - currentTimeMs
+          );
+          if (retryDelayMs <= 0) {
+            throw error;
+          }
+
+          retryCount += 1;
+          await addStepLog(
+            visibleStep,
+            `${operationLabel}遇到临时错误，将在 ${Math.ceil(retryDelayMs / 1000)} 秒后进行第 ${retryCount} 次重试（最多重试 5 分钟）。`,
+            'warn'
+          );
+          throwIfStopped();
+          await sleepWithStop(retryDelayMs);
+        }
+      }
     }
 
     function getSub2ApiApi() {
@@ -125,7 +180,11 @@
         timeoutMs: 120000,
       };
 
-      const prepared = await api.prepareCodexSessionImport(state, logOptions);
+      const prepared = await retrySub2ApiOperation(
+        () => api.prepareCodexSessionImport(state, logOptions),
+        visibleStep,
+        'SUB2API 预检'
+      );
       throwIfStopped();
 
       await addStepLog(visibleStep, 'SUB2API 预检完成，正在读取当前 ChatGPT accessToken...', 'info');
@@ -155,24 +214,11 @@
         resultLabel: 'SUB2API Agent Identity 导入完成',
       };
 
-      let result;
-      try {
-        result = await api.importPreparedCodexAuth(prepared, importInput, importOptions);
-      } catch (error) {
-        throwIfStopped();
-        if (!isRetryableSub2ApiImportError(error)) {
-          throw error;
-        }
-        await addStepLog(
-          visibleStep,
-          'SUB2API 导入遇到临时错误，1 秒后复用当前 Agent Identity 重试一次...',
-          'warn'
-        );
-        throwIfStopped();
-        await sleepWithStop(IMPORT_RETRY_DELAY_MS);
-        throwIfStopped();
-        result = await api.importPreparedCodexAuth(prepared, importInput, importOptions);
-      }
+      const result = await retrySub2ApiOperation(
+        () => api.importPreparedCodexAuth(prepared, importInput, importOptions),
+        visibleStep,
+        'SUB2API Agent Identity 导入'
+      );
       throwIfStopped();
 
       await completeNodeFromBackground(
@@ -187,7 +233,10 @@
   }
 
   return {
-    IMPORT_RETRY_DELAY_MS,
+    IMPORT_RETRY_DELAY_MS: SUB2API_RETRY_DELAY_MS,
+    IMPORT_RETRY_WINDOW_MS: SUB2API_RETRY_WINDOW_MS,
+    SUB2API_RETRY_DELAY_MS,
+    SUB2API_RETRY_WINDOW_MS,
     createSub2ApiAgentIdentityImportExecutor,
     isRetryableSub2ApiImportError,
   };

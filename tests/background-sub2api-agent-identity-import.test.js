@@ -194,7 +194,7 @@ test('SUB2API Agent Identity step retries only the import with the same in-memor
   assert.strictEqual(importCalls[1].input.authJson, authJson);
   assert.equal(importCalls[0].input.authJson.agent_identity.agent_runtime_id, 'agent-runtime-123');
   assert.equal(importCalls[1].input.authJson.agent_identity.agent_runtime_id, 'agent-runtime-123');
-  assert.deepEqual(sleepCalls, [1000]);
+  assert.deepEqual(sleepCalls, [10000]);
 });
 
 test('SUB2API Agent Identity step retries the documented transient import failures', async (t) => {
@@ -233,7 +233,7 @@ test('SUB2API Agent Identity step retries the documented transient import failur
           },
         }),
         sleepWithStop: async (duration) => {
-          assert.equal(duration, 1000);
+          assert.equal(duration, 10000);
           sleepCount += 1;
         },
         throwIfStopped: () => {},
@@ -244,6 +244,87 @@ test('SUB2API Agent Identity step retries the documented transient import failur
       assert.equal(sleepCount, 1);
     });
   }
+});
+
+test('SUB2API Agent Identity step retries a transient preflight before reading the ChatGPT session', async () => {
+  const api = loadStepApi();
+  const sleepCalls = [];
+  let prepareCount = 0;
+  let readCount = 0;
+  let registerCount = 0;
+  let importCount = 0;
+  const executor = api.createSub2ApiAgentIdentityImportExecutor({
+    addLog: async () => {},
+    completeNodeFromBackground: async () => {},
+    createAgentIdentity: async () => {
+      registerCount += 1;
+      return createAuthJson();
+    },
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async () => {
+        readCount += 1;
+        return { accessToken: 'live-access-token', session: {} };
+      },
+    }),
+    createSub2ApiApi: () => ({
+      prepareCodexSessionImport: async () => {
+        prepareCount += 1;
+        if (prepareCount < 3) {
+          throw Object.assign(new Error('SUB2API request timed out'), { code: 'SUB2API_TIMEOUT' });
+        }
+        return { groupIds: [5] };
+      },
+      importPreparedCodexAuth: async () => {
+        importCount += 1;
+        return { verifiedStatus: 'imported' };
+      },
+    }),
+    sleepWithStop: async (duration) => sleepCalls.push(duration),
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeSub2ApiAgentIdentityImport({ visibleStep: 10 });
+
+  assert.equal(prepareCount, 3);
+  assert.equal(readCount, 1);
+  assert.equal(registerCount, 1);
+  assert.equal(importCount, 1);
+  assert.deepEqual(sleepCalls, [10000, 10000]);
+});
+
+test('SUB2API Agent Identity step stops retrying transient imports after five minutes', async () => {
+  const api = loadStepApi();
+  const sleepCalls = [];
+  let nowMs = 0;
+  let importCount = 0;
+  const executor = api.createSub2ApiAgentIdentityImportExecutor({
+    addLog: async () => {},
+    completeNodeFromBackground: async () => {},
+    createAgentIdentity: async () => createAuthJson(),
+    createOpenAiSessionReader: () => ({
+      readCurrentSessionFromState: async () => ({ accessToken: 'live-access-token', session: {} }),
+    }),
+    createSub2ApiApi: () => ({
+      prepareCodexSessionImport: async () => ({ groupIds: [5] }),
+      importPreparedCodexAuth: async () => {
+        importCount += 1;
+        throw Object.assign(new Error('temporarily unavailable'), { status: 503 });
+      },
+    }),
+    now: () => nowMs,
+    sleepWithStop: async (duration) => {
+      sleepCalls.push(duration);
+      nowMs += duration;
+    },
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    () => executor.executeSub2ApiAgentIdentityImport({ visibleStep: 10 }),
+    /temporarily unavailable/
+  );
+  assert.equal(importCount, 31);
+  assert.deepEqual(sleepCalls, Array(30).fill(10000));
 });
 
 test('SUB2API Agent Identity step does not retry non-transient import errors', async () => {
