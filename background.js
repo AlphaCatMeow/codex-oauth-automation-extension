@@ -10591,24 +10591,14 @@ async function skipNode(nodeId) {
     assertNodeExecutionAllowedForState(normalizedNodeId, state, '跳过节点');
   }
 
-  const allowedNodeIds = typeof getExecutionAllowedNodeIdsForState === 'function'
-    ? getExecutionAllowedNodeIdsForState(state)
-    : activeNodeIds;
-  const currentIndex = allowedNodeIds.indexOf(normalizedNodeId);
-  if (currentIndex > 0) {
-    const prevNodeId = allowedNodeIds[currentIndex - 1];
-    const prevStatus = statuses[prevNodeId];
-    if (!isStepDoneStatus(prevStatus)) {
-      throw new Error(`请先完成节点 ${prevNodeId}，再跳过节点 ${normalizedNodeId}。`);
-    }
-  }
-
+  // Skipping is an explicit operator override. Node executors still validate their real inputs.
   await setNodeStatus(normalizedNodeId, 'skipped');
   await addLog(`节点 ${normalizedNodeId} 已跳过`, 'warn');
 
   const linkedSkipNodeIdsByRoot = {
     'open-chatgpt': ['submit-signup-email', 'fill-password', 'fetch-signup-code', 'fill-profile', 'wait-registration-success'],
     'kiro-open-register-page': ['kiro-submit-email', 'kiro-submit-name', 'kiro-submit-verification-code', 'kiro-submit-password', 'kiro-complete-register-consent'],
+    'grok-open-signup-page': ['grok-submit-email', 'grok-submit-verification-code', 'grok-submit-profile'],
   };
   const linkedSkipNodeIds = linkedSkipNodeIdsByRoot[normalizedNodeId] || [];
   if (linkedSkipNodeIds.length) {
