@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
+const VALID_CODE = 'ilUTmu195dD7ZtMI-huPjKMXjR65M6K-dloR3XzL1vTnypRYqC';
+
 function loadModules() {
   const stateSource = fs.readFileSync('flows/grok/background/state.js', 'utf8');
   const runnerSource = fs.readFileSync('flows/grok/background/sub2api-oauth-runner.js', 'utf8');
@@ -72,6 +74,7 @@ function createHarness(options = {}) {
   let ensureReadyCount = 0;
   const pageStates = [...(options.pageStates || [])];
   let nextTabId = 70;
+  let clock = 2_000_000;
 
   const api = {
     async prepareGrokOAuth() {
@@ -155,11 +158,20 @@ function createHarness(options = {}) {
       writes.push(JSON.parse(JSON.stringify(patch)));
       currentState = modules.state.buildStateView({ ...currentState, ...patch });
     },
-    sleepWithStop: async () => {},
+    sleepWithStop: async (ms) => {
+      if (options.advanceClock) {
+        clock += Math.max(0, Number(ms) || 0);
+      }
+    },
     throwIfStopped: () => {},
     waitForTabStableComplete: async () => {},
     GROK_SUB2API_OAUTH_INJECT_FILES: ['content/utils.js', 'flows/grok/content/sub2api-oauth-page.js'],
-    now: options.now || (() => 2_000_000),
+    now: options.now || (() => clock),
+    preOAuthSettleMs: options.preOAuthSettleMs ?? 0,
+    oauthSignInStuckMs: options.oauthSignInStuckMs ?? 45_000,
+    oauthSignInMaxReloads: options.oauthSignInMaxReloads ?? 1,
+    oauthReloadDelayMs: options.oauthReloadDelayMs ?? 0,
+    postConsentWaitMs: options.postConsentWaitMs ?? 0,
   });
 
   return {
@@ -234,6 +246,22 @@ test('Grok SUB2API OAuth start uses a direct page probe when the content message
   )), false);
 });
 
+test('Grok SUB2API OAuth start ignores a code page on /sign-in until consent is visible', async () => {
+  const harness = createHarness({
+    directPageStates: [
+      { state: 'code_page', pathname: '/sign-in', diagnostic: { host: 'accounts.x.ai', path: '/sign-in' } },
+      { state: 'sign_in', pathname: '/sign-in', diagnostic: { host: 'accounts.x.ai', path: '/sign-in' } },
+      { state: 'consent_page', pathname: '/oauth2/consent', diagnostic: { host: 'accounts.x.ai', path: '/oauth2/consent' } },
+    ],
+  });
+
+  await harness.runner.executeGrokStartSub2ApiOAuth({ nodeId: 'grok-start-sub2api-oauth' });
+
+  assert.equal(harness.completed.at(-1).nodeId, 'grok-start-sub2api-oauth');
+  assert.equal(harness.createdAccounts.length, 0);
+  assert.equal(harness.logs.some((message) => message.includes('忽略未授权 code 状态')), true);
+});
+
 test('Grok SUB2API OAuth completion clicks allow, reads code locally, and creates the account', async () => {
   const harness = createHarness({
     initialState: createInitialState({
@@ -248,7 +276,7 @@ test('Grok SUB2API OAuth completion clicks allow, reads code locally, and create
     }),
     pageStates: [
       { state: 'consent_page', url: 'https://auth.x.ai/oauth2/authorize' },
-      { state: 'code_page', code: 'visible-code-value', url: 'https://auth.x.ai/oauth2/code' },
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' },
     ],
   });
 
@@ -257,7 +285,7 @@ test('Grok SUB2API OAuth completion clicks allow, reads code locally, and create
 
   assert.equal(harness.createdAccounts.length, 1);
   assert.equal(harness.getEnsureReadyCount() >= 2, true);
-  assert.equal(harness.createdAccounts[0].code, 'visible-code-value');
+  assert.equal(harness.createdAccounts[0].code, VALID_CODE);
   assert.equal(runtime.oauth.sessionId, '');
   assert.equal(runtime.oauth.state, '');
   assert.equal(runtime.oauth.authUrl, '');
@@ -268,10 +296,71 @@ test('Grok SUB2API OAuth completion clicks allow, reads code locally, and create
       && patch?.runtimeState?.flowState?.grok?.upload?.status === 'authorizing'
   )), true);
   assert.equal(harness.completed.at(-1).nodeId, 'grok-complete-sub2api-oauth');
-  assert.equal(JSON.stringify(harness.writes).includes('visible-code-value'), false);
-  assert.equal(harness.logs.some((message) => message.includes('visible-code-value')), false);
+  assert.equal(JSON.stringify(harness.writes).includes(VALID_CODE), false);
+  assert.equal(harness.logs.some((message) => message.includes(VALID_CODE)), false);
   assert.deepEqual(harness.removedTabs, [72]);
   assert.deepEqual(harness.unregisteredTabs, [{ source: 'grok-sub2api-oauth-page', tabId: 72 }]);
+});
+
+test('Grok SUB2API OAuth completion rejects a code page on /sign-in before consent', async () => {
+  const harness = createHarness({
+    initialState: createInitialState({
+      sessionId: 'session-existing',
+      state: 'state-existing',
+      authUrl: 'https://accounts.x.ai/oauth2/consent',
+      authTabId: 72,
+      groupIds: [31],
+      status: 'awaiting_authorization',
+      startedAt: 1_999_000,
+    }),
+    directConsentResults: [
+      [{ result: { clicked: false, state: 'sign_in', pathname: '/sign-in', diagnostic: { path: '/sign-in' } } }],
+      [{ result: { clicked: true, state: 'consent_submitted', pathname: '/oauth2/consent', diagnostic: { path: '/oauth2/consent' } } }],
+    ],
+    pageStates: [
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/sign-in', pathname: '/sign-in' },
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' },
+    ],
+  });
+
+  await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
+
+  assert.equal(harness.createdAccounts.length, 1);
+  assert.equal(harness.createdAccounts[0].code, VALID_CODE);
+  assert.equal(harness.logs.some((message) => message.includes('丢弃不可信 code 状态')), true);
+});
+
+test('Grok SUB2API OAuth completion reopens one authorization tab after a persistent sign-in page', async () => {
+  const harness = createHarness({
+    initialState: createInitialState({
+      sessionId: 'session-existing',
+      state: 'state-existing',
+      authUrl: 'https://accounts.x.ai/oauth2/consent',
+      authTabId: 72,
+      groupIds: [31],
+      status: 'awaiting_authorization',
+      startedAt: 1_999_000,
+    }),
+    advanceClock: true,
+    oauthSignInStuckMs: 1_000,
+    directConsentResults: [
+      [{ result: { clicked: false, state: 'sign_in', pathname: '/sign-in', diagnostic: { path: '/sign-in' } } }],
+      [{ result: { clicked: false, state: 'sign_in', pathname: '/sign-in', diagnostic: { path: '/sign-in' } } }],
+      [{ result: { clicked: false, state: 'sign_in', pathname: '/sign-in', diagnostic: { path: '/sign-in' } } }],
+      [{ result: { clicked: true, state: 'consent_submitted', pathname: '/oauth2/consent', diagnostic: { path: '/oauth2/consent' } } }],
+    ],
+    pageStates: [
+      { state: 'sign_in', pathname: '/sign-in', url: 'https://accounts.x.ai/sign-in' },
+      { state: 'sign_in', pathname: '/sign-in', url: 'https://accounts.x.ai/sign-in' },
+      { state: 'code_page', code: VALID_CODE, pathname: '/oauth2/consent', url: 'https://accounts.x.ai/oauth2/consent' },
+    ],
+  });
+
+  await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
+
+  assert.equal(harness.createdAccounts.length, 1);
+  assert.equal(harness.removedTabs.includes(72), true);
+  assert.equal(harness.logs.some((message) => message.includes('持续停在登录页')), true);
 });
 
 test('Grok SUB2API OAuth completion directly clicks consent when the content script keeps loading', async () => {
@@ -289,7 +378,7 @@ test('Grok SUB2API OAuth completion directly clicks consent when the content scr
     directConsentResults: [[{ result: { clicked: true } }]],
     pageStates: [
       { state: 'loading', url: 'https://auth.x.ai/oauth2/authorize' },
-      { state: 'code_page', code: 'visible-code-value', url: 'https://auth.x.ai/oauth2/code' },
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' },
     ],
   });
 
@@ -323,7 +412,7 @@ test('Grok SUB2API OAuth diagnostics do not repeat unchanged DOM and content sta
     pageStates: [
       { state: 'loading' },
       { state: 'loading' },
-      { state: 'code_page', code: 'visible-code-value' },
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' },
     ],
   });
 
@@ -364,7 +453,7 @@ test('Grok SUB2API OAuth completion clicks allow when consent page also contains
       },
       location: { hostname: 'accounts.x.ai', pathname: '/oauth2/consent' },
     },
-    pageStates: [{ state: 'code_page', code: 'visible-code-value' }],
+    pageStates: [{ state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' }],
   });
 
   await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
@@ -386,7 +475,7 @@ test('Grok SUB2API OAuth retry regenerates an errored session without touching w
     }),
     pageStates: [
       { state: 'consent_page', url: 'https://auth.x.ai/oauth2/authorize' },
-      { state: 'code_page', code: 'retry-code' },
+      { state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' },
     ],
   });
 
@@ -408,7 +497,7 @@ test('Grok SUB2API OAuth completion preserves a reopened authorization tab id', 
       status: 'awaiting_authorization',
       startedAt: 1_999_000,
     }),
-    pageStates: [{ state: 'code_page', code: 'reopened-tab-code' }],
+    pageStates: [{ state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' }],
   });
 
   await harness.runner.executeGrokCompleteSub2ApiOAuth({ nodeId: 'grok-complete-sub2api-oauth' });
@@ -453,7 +542,7 @@ test('Grok SUB2API OAuth account creation stays successful when tab unregister c
       status: 'awaiting_authorization',
       startedAt: 1_999_000,
     }),
-    pageStates: [{ state: 'code_page', code: 'cleanup-failure-code' }],
+    pageStates: [{ state: 'code_page', code: VALID_CODE, url: 'https://accounts.x.ai/oauth2/consent', pathname: '/oauth2/consent' }],
     unregisterTab: async () => { throw new Error('registry unavailable'); },
   });
 

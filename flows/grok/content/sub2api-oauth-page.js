@@ -6,44 +6,89 @@
   const LISTENER_SENTINEL = 'data-flowpilot-grok-sub2api-oauth-listener';
   const CONSENT_PAGE_PATTERN = /授权\s*Grok Build|Authorize\s+Grok Build/i;
   const ALLOW_ACTION_PATTERN = /^(?:允许|Allow|Authorize|Continue)$/i;
-  const CODE_PAGE_PATTERN = /输入此代码以完成登录|Enter this code to (?:complete|finish) (?:sign[ -]?in|login)|copy (?:the )?code to Grok Build/i;
+  const CODE_PAGE_PATTERN = /输入此代码以完成登录|Enter this code to (?:complete|finish) sign(?:ing)?[ -]?in|Enter this code to (?:complete|finish) login|copy (?:the )?code(?: below)? (?:into|to) Grok Build|将下面的代码复制到\s*Grok Build/i;
   const ERROR_PAGE_PATTERN = /授权失败|拒绝授权|authorization (?:failed|denied)|access denied|something went wrong/i;
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function cleanText(value = '') {
     return String(value || '').replace(/\s+/g, ' ').trim();
   }
 
+  function getPathname(url = '', fallback = '') {
+    const raw = cleanText(fallback);
+    if (raw.startsWith('/')) return raw;
+    try {
+      if (url) return new URL(String(url), 'https://accounts.x.ai').pathname || '';
+    } catch {}
+    if (typeof location !== 'undefined' && location?.pathname) {
+      return String(location.pathname || '');
+    }
+    return '';
+  }
+
+  function isSignInPath(pathname = '') {
+    return /\/sign-?in(?:\/|$)/i.test(String(pathname || ''));
+  }
+
   function normalizeAuthorizationCode(value = '') {
     const code = cleanText(value);
-    if (code.length < 16 || /\s/.test(code) || !/^[A-Za-z0-9._~-]+$/.test(code)) {
+    if (code.length < 20 || code.length > 256 || /\s/.test(code) || !/^[A-Za-z0-9._~-]+$/.test(code)) {
       return '';
     }
+    if (UUID_PATTERN.test(code)) return '';
     return code;
+  }
+
+  function extractAuthorizationCodeFromText(pageText = '') {
+    const tokens = String(pageText || '').match(/[A-Za-z0-9._~-]{24,128}/g) || [];
+    const codes = tokens
+      .map(normalizeAuthorizationCode)
+      .filter(Boolean)
+      .filter((code) => /[-_]/.test(code) || /[A-Z]/.test(code) && /[a-z]/.test(code))
+      .sort((left, right) => right.length - left.length);
+    return codes[0] || '';
   }
 
   function classifyPageSnapshot(snapshot = {}) {
     const pageText = cleanText(snapshot.pageText);
+    const pathname = getPathname(snapshot.url, snapshot.pathname);
     const actionIndex = (Array.isArray(snapshot.actionTexts) ? snapshot.actionTexts : [])
       .findIndex((text) => ALLOW_ACTION_PATTERN.test(cleanText(text)));
-    if (ERROR_PAGE_PATTERN.test(pageText)) {
-      return {
-        state: 'error_page',
-        error: 'Grok OAuth 授权页面显示失败。',
-      };
+    const isConsentPage = CONSENT_PAGE_PATTERN.test(pageText);
+    const hasCodeUi = CODE_PAGE_PATTERN.test(pageText);
+    const onSignIn = isSignInPath(pathname);
+    const withPath = (result) => pathname ? { ...result, pathname } : result;
+
+    if (isConsentPage && actionIndex >= 0) {
+      return withPath({ state: 'consent_page', actionIndex });
     }
-    if (CONSENT_PAGE_PATTERN.test(pageText) && actionIndex >= 0) {
-      return { state: 'consent_page', actionIndex };
+
+    if (onSignIn && !isConsentPage) {
+      return withPath({ state: 'sign_in' });
     }
-    if (CODE_PAGE_PATTERN.test(pageText)) {
-      const code = (Array.isArray(snapshot.codeCandidates) ? snapshot.codeCandidates : [])
+
+    if (hasCodeUi && !onSignIn) {
+      const candidateCode = (Array.isArray(snapshot.codeCandidates) ? snapshot.codeCandidates : [])
         .map(normalizeAuthorizationCode)
         .find(Boolean);
-      return code ? { state: 'code_page', code } : { state: 'code_waiting' };
+      const code = candidateCode || extractAuthorizationCodeFromText(pageText);
+      return code
+        ? withPath({ state: 'code_page', code })
+        : withPath({ state: 'code_waiting' });
     }
-    if (CONSENT_PAGE_PATTERN.test(pageText)) {
-      return { state: 'consent_waiting' };
+
+    if (isConsentPage) {
+      return withPath({ state: 'consent_waiting' });
     }
-    return { state: 'loading' };
+
+    if (ERROR_PAGE_PATTERN.test(pageText)) {
+      return withPath({
+        state: 'error_page',
+        error: 'Grok OAuth 授权页面显示失败。',
+      });
+    }
+
+    return withPath({ state: 'loading' });
   }
 
   function isVisible(element) {
@@ -87,17 +132,24 @@
       'input[readonly]',
       'textarea[readonly]',
       'code',
+      'pre',
       '[data-testid*="code" i]',
       '[aria-label*="code" i]',
+      '[class*="code" i]',
     ].join(', '));
+    const url = typeof location !== 'undefined' ? location.href : '';
+    const pathname = typeof location !== 'undefined' ? location.pathname : '';
     const classified = classifyPageSnapshot({
       pageText: cleanText(`${document.title || ''} ${document.body?.textContent || ''}`),
       actionTexts: actions.map(getActionText),
       codeCandidates: codeElements.map(getCodeCandidate),
+      url,
+      pathname,
     });
     return {
       ...classified,
-      url: location.href,
+      url,
+      pathname: classified.pathname || pathname,
       actionElement: Number.isInteger(classified.actionIndex) ? actions[classified.actionIndex] : null,
     };
   }
@@ -110,6 +162,7 @@
     return {
       state: state.state,
       url: state.url,
+      pathname: state.pathname || '',
       ...(state.code ? { code: state.code } : {}),
     };
   }
@@ -161,11 +214,14 @@
 
   return {
     classifyPageSnapshot,
+    extractAuthorizationCodeFromText,
     getActionText,
     getCodeCandidate,
+    getPathname,
     getPublicPageState,
     handleMessage,
     installListener,
+    isSignInPath,
     normalizeAuthorizationCode,
   };
 });
