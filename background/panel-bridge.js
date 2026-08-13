@@ -290,11 +290,20 @@
       });
     }
 
+    async function testSub2ApiConnection(state, options = {}) {
+      const api = getSub2ApiApi();
+      return api.testSub2ApiConnection({
+        ...state,
+        sub2apiUrl: normalizeSub2ApiUrl(state?.sub2apiUrl),
+      }, options);
+    }
+
     return {
       requestOAuthUrlFromPanel,
       requestCodex2ApiOAuthUrl,
       requestCpaOAuthUrl,
       requestSub2ApiOAuthUrl,
+      testSub2ApiConnection,
     };
   }
 

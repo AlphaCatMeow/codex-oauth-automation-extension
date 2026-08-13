@@ -272,6 +272,57 @@
       return matched;
     }
 
+    async function getGroupsByPlatform(origin, token, platform = 'openai', options = {}) {
+      const targetPlatform = normalizeString(platform).toLowerCase();
+      if (!['openai', 'grok'].includes(targetPlatform)) {
+        throw new Error(`不支持的 SUB2API 分组平台：${targetPlatform || '空'}。`);
+      }
+
+      const groups = await requestJson(
+        origin,
+        `/api/v1/admin/groups/all?platform=${encodeURIComponent(targetPlatform)}`,
+        {
+          method: 'GET',
+          token,
+          timeoutMs: options.timeoutMs,
+        }
+      );
+      const seen = new Set();
+      return (Array.isArray(groups) ? groups : []).reduce((result, item) => {
+        const name = normalizeString(item?.name);
+        const itemPlatform = normalizeString(item?.platform).toLowerCase();
+        const key = name.toLowerCase();
+        if (!name || seen.has(key) || (itemPlatform && itemPlatform !== targetPlatform)) {
+          return result;
+        }
+        seen.add(key);
+        result.push({
+          id: Number.isSafeInteger(Number(item?.id)) && Number(item.id) > 0
+            ? Number(item.id)
+            : null,
+          name,
+          platform: itemPlatform || targetPlatform,
+        });
+        return result;
+      }, []);
+    }
+
+    async function testSub2ApiConnection(state = {}, options = {}) {
+      const platform = normalizeString(options.platform).toLowerCase() || 'openai';
+      if (!['openai', 'grok'].includes(platform)) {
+        throw new Error(`不支持的 SUB2API 分组平台：${platform || '空'}。`);
+      }
+      const { origin, token, user } = await loginSub2Api(state, options);
+      const groups = await getGroupsByPlatform(origin, token, platform, options);
+      return {
+        connected: true,
+        origin,
+        platform,
+        groups,
+        user,
+      };
+    }
+
     function resolveGrokRuntimeState(state = {}) {
       const canonical = state?.runtimeState?.flowState?.grok;
       if (canonical && typeof canonical === 'object' && !Array.isArray(canonical)) {
@@ -1159,6 +1210,7 @@
       buildProxyDisplayName,
       extractStateFromAuthUrl,
       generateOpenAiAuthUrl,
+      getGroupsByPlatform,
       getGroupsByNames,
       prepareGrokOAuth,
       prepareCodexSessionImport,
@@ -1175,6 +1227,7 @@
       resolveSub2ApiProxy,
       resolveGrokRegistrationEmail,
       submitOpenAiCallback,
+      testSub2ApiConnection,
     };
   }
 
