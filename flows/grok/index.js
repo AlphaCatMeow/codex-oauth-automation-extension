@@ -239,6 +239,7 @@
           'row-sub2api-url',
           'row-sub2api-email',
           'row-sub2api-password',
+          'row-sub2api-connection-test',
           'row-grok-sub2api-grok2api-upload',
           'row-grok2api-url',
           'row-grok2api-key',

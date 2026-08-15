@@ -103,6 +103,9 @@ const rowSub2ApiEmail = document.getElementById('row-sub2api-email');
 const inputSub2ApiEmail = document.getElementById('input-sub2api-email');
 const rowSub2ApiPassword = document.getElementById('row-sub2api-password');
 const inputSub2ApiPassword = document.getElementById('input-sub2api-password');
+const rowSub2ApiConnectionTest = document.getElementById('row-sub2api-connection-test');
+const btnTestSub2ApiConnection = document.getElementById('btn-test-sub2api-connection');
+const displaySub2ApiConnectionTestStatus = document.getElementById('display-sub2api-connection-test-status');
 const rowSub2ApiGroup = document.getElementById('row-sub2api-group');
 const inputSub2ApiGroup = document.getElementById('input-sub2api-group');
 const sub2ApiGroupPickerRoot = document.getElementById('sub2api-group-picker');
@@ -636,6 +639,8 @@ let currentStepDefinitionOpenAiWebchatUploadEnabled = false;
 let currentStepDefinitionGrokSub2apiGrok2ApiUploadEnabled = false;
 let phoneSignupReuseUiWasLocked = false;
 let kiroRsConnectionTestStatusText = '未测试';
+let sub2ApiConnectionTestStatusText = '未测试';
+let sub2ApiConnectionTestStatusTone = '';
 let lastPhoneSmsProviderBeforeChange = null;
 let heroSmsCountrySelectionOrder = [];
 let heroSmsOperatorsByCountryId = new Map();
@@ -3235,6 +3240,23 @@ function setKiroRsConnectionTestStatus(message = '') {
   kiroRsConnectionTestStatusText = nextText;
   if (typeof displayKiroRsTestStatus !== 'undefined' && displayKiroRsTestStatus) {
     displayKiroRsTestStatus.textContent = nextText;
+  }
+}
+
+function setSub2ApiConnectionTestStatus(message = '', tone = '') {
+  const nextText = String(message || '').trim() || '未测试';
+  const nextTone = ['ok', 'running', 'error'].includes(String(tone || '').trim())
+    ? String(tone).trim()
+    : '';
+  sub2ApiConnectionTestStatusText = nextText;
+  sub2ApiConnectionTestStatusTone = nextTone;
+  if (displaySub2ApiConnectionTestStatus) {
+    displaySub2ApiConnectionTestStatus.textContent = nextText;
+    if (nextTone) {
+      displaySub2ApiConnectionTestStatus.dataset.tone = nextTone;
+    } else {
+      delete displaySub2ApiConnectionTestStatus.dataset.tone;
+    }
   }
 }
 
@@ -12030,6 +12052,12 @@ function applySettingsState(state) {
   if (typeof displayKiroRsTestStatus !== 'undefined' && displayKiroRsTestStatus) {
     displayKiroRsTestStatus.textContent = kiroRsConnectionTestStatusText;
   }
+  if (typeof setSub2ApiConnectionTestStatus === 'function') {
+    setSub2ApiConnectionTestStatus(
+      sub2ApiConnectionTestStatusText,
+      sub2ApiConnectionTestStatusTone
+    );
+  }
   const resolveKiroRuntimeState = typeof getKiroRuntimeState === 'function'
     ? getKiroRuntimeState
     : ((value = {}) => {
@@ -15553,6 +15581,7 @@ const accountContributionManager = window.SidepanelContributionMode?.createContr
     rowSub2ApiAccountPriority,
     rowSub2ApiDefaultProxy,
     rowSub2ApiEmail,
+    rowSub2ApiConnectionTest,
     rowSub2ApiGroup,
     rowSub2ApiPassword,
     rowSub2ApiUrl,
@@ -16509,6 +16538,75 @@ btnTestKiroRs?.addEventListener('click', async () => {
   }
 });
 
+btnTestSub2ApiConnection?.addEventListener('click', async () => {
+  const defaultLabel = btnTestSub2ApiConnection.textContent || '测试并同步分组';
+  btnTestSub2ApiConnection.disabled = true;
+  btnTestSub2ApiConnection.textContent = '测试中';
+  setSub2ApiConnectionTestStatus('正在登录并获取分组...', 'running');
+  try {
+    await persistCurrentSettingsForAction();
+    const activeFlowId = typeof getSelectedFlowId === 'function'
+      ? getSelectedFlowId(latestState)
+      : DEFAULT_ACTIVE_FLOW_ID;
+    const response = await sendSidepanelMessage({
+      type: 'CHECK_SUB2API_CONNECTION',
+      payload: {
+        activeFlowId,
+        sub2apiUrl: String(inputSub2ApiUrl?.value || '').trim(),
+        sub2apiEmail: String(inputSub2ApiEmail?.value || '').trim(),
+        sub2apiPassword: String(inputSub2ApiPassword?.value || ''),
+      },
+    });
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+
+    const groupNames = normalizeSub2ApiGroupOptions(
+      (Array.isArray(response?.groups) ? response.groups : []).map((group) => group?.name)
+    );
+    if (!groupNames.length) {
+      throw new Error(response?.message || `SUB2API 中没有可用的 ${response?.platform || '目标'} 分组。`);
+    }
+
+    const isGrok = response?.platform === 'grok' || activeFlowId === 'grok';
+    if (isGrok) {
+      const current = getSelectedGrokSub2ApiGroupName();
+      const selected = groupNames.some((name) => name.toLowerCase() === current.toLowerCase())
+        ? current
+        : groupNames[0];
+      syncLatestState({
+        grokSub2apiGroupName: selected,
+        grokSub2apiGroupNames: groupNames,
+      });
+      renderGrokSub2ApiGroupOptions(latestState, selected);
+    } else {
+      const current = getSelectedSub2ApiGroupName();
+      const selected = groupNames.some((name) => name.toLowerCase() === current.toLowerCase())
+        ? current
+        : groupNames[0];
+      syncLatestState({
+        sub2apiGroupName: selected,
+        sub2apiGroupNames: groupNames,
+      });
+      renderSub2ApiGroupOptions(latestState, selected);
+    }
+    markSettingsDirty(true);
+    await saveSettings({ silent: true, force: true });
+
+    const message = String(response?.message || '').trim()
+      || `SUB2API 连接成功，已同步 ${groupNames.length} 个分组。`;
+    setSub2ApiConnectionTestStatus(message, 'ok');
+    showToast(message, 'success', 2600);
+  } catch (error) {
+    const message = error?.message || 'SUB2API 连接测试失败。';
+    setSub2ApiConnectionTestStatus(message, 'error');
+    showToast(message, 'error', 4200);
+  } finally {
+    btnTestSub2ApiConnection.disabled = false;
+    btnTestSub2ApiConnection.textContent = defaultLabel;
+  }
+});
+
 selectPlusPaymentMethod?.addEventListener('change', () => {
   selectPlusPaymentMethod.value = normalizePlusPaymentMethod(selectPlusPaymentMethod.value);
   updatePlusModeUI();
@@ -16710,6 +16808,7 @@ checkboxAutoDeleteIcloud?.addEventListener('change', () => {
 });
 
 selectPanelMode.addEventListener('change', async () => {
+  setSub2ApiConnectionTestStatus('未测试');
   const activeFlowId = typeof getSelectedFlowId === 'function'
     ? getSelectedFlowId(latestState)
     : normalizeFlowId(latestState?.activeFlowId || latestState?.flowId || DEFAULT_ACTIVE_FLOW_ID);
@@ -17170,6 +17269,7 @@ inputTempEmailDomain.addEventListener('keydown', (event) => {
 
 inputSub2ApiUrl.addEventListener('input', () => {
   markSettingsDirty(true);
+  setSub2ApiConnectionTestStatus('未测试');
   scheduleSettingsAutoSave();
 });
 inputSub2ApiUrl.addEventListener('blur', () => {
@@ -17178,6 +17278,7 @@ inputSub2ApiUrl.addEventListener('blur', () => {
 
 inputSub2ApiEmail.addEventListener('input', () => {
   markSettingsDirty(true);
+  setSub2ApiConnectionTestStatus('未测试');
   scheduleSettingsAutoSave();
 });
 inputSub2ApiEmail.addEventListener('blur', () => {
@@ -17186,6 +17287,7 @@ inputSub2ApiEmail.addEventListener('blur', () => {
 
 inputSub2ApiPassword.addEventListener('input', () => {
   markSettingsDirty(true);
+  setSub2ApiConnectionTestStatus('未测试');
   scheduleSettingsAutoSave();
 });
 inputSub2ApiPassword.addEventListener('blur', () => {
@@ -17703,6 +17805,7 @@ inputStepExecutionRangeEnabled?.addEventListener('change', () => {
 });
 
 selectFlow?.addEventListener('change', () => {
+  setSub2ApiConnectionTestStatus('未测试');
   const nextActiveFlowId = typeof normalizeFlowId === 'function'
     ? normalizeFlowId(selectFlow.value, latestState?.activeFlowId || latestState?.flowId || DEFAULT_ACTIVE_FLOW_ID)
     : (String(selectFlow.value || latestState?.activeFlowId || latestState?.flowId || DEFAULT_ACTIVE_FLOW_ID).trim().toLowerCase() || DEFAULT_ACTIVE_FLOW_ID);

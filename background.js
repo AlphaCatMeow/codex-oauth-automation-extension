@@ -14213,6 +14213,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
       typeof fetch === 'function' ? fetch.bind(globalThis) : null
     );
   },
+  testSub2ApiConnection: (state, options = {}) => panelBridge.testSub2ApiConnection(state, options),
   finalizeStep3Completion: async () => {
     const currentState = await getState();
     const signupTabId = await getTabId('openai-auth');

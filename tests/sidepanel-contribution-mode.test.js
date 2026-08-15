@@ -425,6 +425,7 @@ test('contribution mode manager enters mode, starts main auto flow, polls contri
     rowSub2ApiEmail: createElement(),
     rowSub2ApiGroup: createElement(),
     rowSub2ApiPassword: createElement(),
+    rowSub2ApiConnectionTest: createElement(),
     rowSub2ApiUrl: createElement(),
     rowCodex2ApiUrl: createElement(),
     rowCodex2ApiAdminKey: createElement(),

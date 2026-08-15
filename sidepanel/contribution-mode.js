@@ -26,6 +26,7 @@
       dom.rowSub2ApiUrl,
       dom.rowSub2ApiEmail,
       dom.rowSub2ApiPassword,
+      dom.rowSub2ApiConnectionTest,
       dom.rowSub2ApiGroup,
       dom.rowSub2ApiDefaultProxy,
       dom.rowCodex2ApiUrl,
