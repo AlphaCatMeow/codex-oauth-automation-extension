@@ -41,6 +41,7 @@
       exportSettingsBundle,
       fetchGeneratedEmail,
       testKiroRsConnection,
+      testSub2ApiConnection,
       finalizePhoneActivationAfterSuccessfulFlow,
       finalizeStep3Completion,
       finalizeStep5Completion = null,
@@ -1727,6 +1728,59 @@
             targetId,
             status: Number(result?.status) || 0,
             message: String(result?.message || '').trim(),
+          };
+        }
+
+        case 'CHECK_SUB2API_CONNECTION': {
+          if (typeof testSub2ApiConnection !== 'function') {
+            throw new Error('SUB2API 连接测试能力尚未接入。');
+          }
+          const currentState = await getState();
+          const activeFlowId = normalizeMessageFlowId(
+            message.payload?.activeFlowId || currentState?.activeFlowId || 'openai',
+            'openai'
+          );
+          const platform = activeFlowId === 'grok' ? 'grok' : 'openai';
+          const canonicalTarget = currentState?.settingsState?.flows?.[activeFlowId]?.targets?.sub2api || {};
+          const testState = {
+            ...currentState,
+            ...canonicalTarget,
+            sub2apiUrl: String(
+              message.payload?.sub2apiUrl
+              ?? canonicalTarget.sub2apiUrl
+              ?? currentState?.sub2apiUrl
+              ?? ''
+            ).trim(),
+            sub2apiEmail: String(
+              message.payload?.sub2apiEmail
+              ?? canonicalTarget.sub2apiEmail
+              ?? currentState?.sub2apiEmail
+              ?? ''
+            ).trim(),
+            sub2apiPassword: String(
+              message.payload?.sub2apiPassword
+              ?? canonicalTarget.sub2apiPassword
+              ?? currentState?.sub2apiPassword
+              ?? ''
+            ),
+          };
+          const result = await testSub2ApiConnection(testState, { platform });
+          const groups = (Array.isArray(result?.groups) ? result.groups : [])
+            .map((group) => ({
+              id: Number.isSafeInteger(Number(group?.id)) && Number(group.id) > 0
+                ? Number(group.id)
+                : null,
+              name: String(group?.name || '').trim(),
+              platform: String(group?.platform || platform).trim().toLowerCase() || platform,
+            }))
+            .filter((group) => group.name);
+          return {
+            ok: Boolean(result?.connected),
+            platform,
+            groups,
+            message: groups.length
+              ? `SUB2API 连接成功，已获取 ${groups.length} 个 ${platform} 分组。`
+              : `SUB2API 连接成功，但未找到可用的 ${platform} 分组。`,
           };
         }
 

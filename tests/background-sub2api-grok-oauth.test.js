@@ -78,6 +78,65 @@ test('SUB2API API prepares Grok OAuth with grok groups and the resolved proxy', 
   assert.equal(result.accountName, 'round@example.com');
 });
 
+test('SUB2API connection test logs in and returns normalized platform groups', async () => {
+  const moduleApi = loadApiModule();
+  const requests = [];
+  const api = moduleApi.createSub2ApiApi({
+    normalizeSub2ApiUrl: (value) => value,
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url, options });
+      const parsed = new URL(url);
+      if (parsed.pathname === '/api/v1/auth/login') {
+        return jsonResponse({ access_token: 'admin-token', user: { role: 'admin' } });
+      }
+      if (parsed.pathname === '/api/v1/admin/groups/all') {
+        assert.equal(parsed.searchParams.get('platform'), 'grok');
+        assert.equal(options.headers.Authorization, 'Bearer admin-token');
+        return jsonResponse([
+          { id: 31, name: 'grok-default', platform: 'grok' },
+          { id: 32, name: 'Grok-Default', platform: 'grok' },
+          { id: 33, name: 'openai-only', platform: 'openai' },
+          { id: null, name: 'grok-backup' },
+          { id: 34, name: '' },
+        ]);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    },
+  });
+
+  const result = await api.testSub2ApiConnection(createState(), { platform: 'grok' });
+
+  assert.equal(result.connected, true);
+  assert.equal(result.platform, 'grok');
+  assert.equal(result.user.role, 'admin');
+  assert.deepEqual(result.groups, [
+    { id: 31, name: 'grok-default', platform: 'grok' },
+    { id: null, name: 'grok-backup', platform: 'grok' },
+  ]);
+  assert.equal(requests.length, 2);
+});
+
+test('SUB2API connection test rejects unsupported group platforms before logging in', async () => {
+  const moduleApi = loadApiModule();
+  let fetchCount = 0;
+  const api = moduleApi.createSub2ApiApi({
+    normalizeSub2ApiUrl: (value) => value,
+    fetchImpl: async (url) => {
+      fetchCount += 1;
+      if (new URL(url).pathname === '/api/v1/auth/login') {
+        return jsonResponse({ access_token: 'admin-token' });
+      }
+      return jsonResponse([]);
+    },
+  });
+
+  await assert.rejects(
+    () => api.testSub2ApiConnection(createState(), { platform: 'unknown' }),
+    /不支持的 SUB2API 分组平台/
+  );
+  assert.equal(fetchCount, 0);
+});
+
 test('SUB2API API creates the Grok OAuth account with the registration email as name', async () => {
   const moduleApi = loadApiModule();
   const requests = [];

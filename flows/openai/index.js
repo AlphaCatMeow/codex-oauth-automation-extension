@@ -483,6 +483,7 @@
         "row-sub2api-url",
         "row-sub2api-email",
         "row-sub2api-password",
+        "row-sub2api-connection-test",
         "row-sub2api-group",
         "row-sub2api-account-priority",
         "row-sub2api-default-proxy"

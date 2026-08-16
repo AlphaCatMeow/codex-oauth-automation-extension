@@ -784,6 +784,66 @@ test('CHECK_KIRO_RS_CONNECTION prefers current sidepanel payload over stale save
   ]);
 });
 
+test('CHECK_SUB2API_CONNECTION tests current credentials and returns platform groups', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = { console };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const calls = [];
+  const router = api.createMessageRouter({
+    getState: async () => ({
+      activeFlowId: 'grok',
+      sub2apiUrl: 'https://old.example.com/admin/accounts',
+      sub2apiEmail: 'old@example.com',
+      sub2apiPassword: 'old-secret',
+      settingsState: {
+        flows: {
+          grok: {
+            targets: {
+              sub2api: {
+                sub2apiUrl: 'https://canonical.example.com/admin/accounts',
+                sub2apiEmail: 'canonical@example.com',
+                sub2apiPassword: 'canonical-secret',
+              },
+            },
+          },
+        },
+      },
+    }),
+    testSub2ApiConnection: async (state, options) => {
+      calls.push({ state, options });
+      return {
+        connected: true,
+        groups: [
+          { id: 9, name: 'grok-default', platform: 'grok' },
+          { id: null, name: '', platform: 'grok' },
+        ],
+      };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'CHECK_SUB2API_CONNECTION',
+    payload: {
+      activeFlowId: 'grok',
+      sub2apiUrl: ' https://current.example.com/admin/accounts ',
+      sub2apiEmail: ' current@example.com ',
+      sub2apiPassword: ' current-secret ',
+    },
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.platform, 'grok');
+  assert.equal(response.message, 'SUB2API 连接成功，已获取 1 个 grok 分组。');
+  assert.deepStrictEqual(response.groups, [
+    { id: 9, name: 'grok-default', platform: 'grok' },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].state.sub2apiUrl, 'https://current.example.com/admin/accounts');
+  assert.equal(calls[0].state.sub2apiEmail, 'current@example.com');
+  assert.equal(calls[0].state.sub2apiPassword, ' current-secret ');
+  assert.deepStrictEqual(calls[0].options, { platform: 'grok' });
+});
+
 test('AUTO_RUN applies current flow selection from payload before starting loop', async () => {
   const source = fs.readFileSync('background/message-router.js', 'utf8');
   const globalScope = { console };
