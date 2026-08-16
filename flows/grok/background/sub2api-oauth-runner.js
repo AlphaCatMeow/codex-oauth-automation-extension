@@ -4,8 +4,13 @@
   const grokStateApi = root?.MultiPageBackgroundGrokState || null;
   const SOURCE_ID = 'grok-sub2api-oauth-page';
   const AUTHORIZATION_TIMEOUT_MS = 180000;
-  const AUTHORIZATION_PAGE_READY_TIMEOUT_MS = 30000;
+  const AUTHORIZATION_PAGE_READY_TIMEOUT_MS = 60000;
   const AUTHORIZATION_PAGE_READY_POLL_INTERVAL_MS = 500;
+  const OAUTH_SIGN_IN_STUCK_MS = 45000;
+  const OAUTH_SIGN_IN_MAX_RELOADS = 1;
+  const OAUTH_RELOAD_DELAY_MS = 2500;
+  const POST_CONSENT_WAIT_MS = 1200;
+  const PRE_OAUTH_SETTLE_MS = 2000;
   const DIAGNOSTIC_LOG_PREFIX = '[Grok OAuth 诊断]';
   const SESSION_FRESHNESS_MS = 25 * 60 * 1000;
 
@@ -74,6 +79,38 @@
     return sanitized.replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]');
   }
 
+  function resolvePagePath(pageState = {}) {
+    const diagnostic = isPlainObject(pageState?.diagnostic) ? pageState.diagnostic : {};
+    const pathname = cleanString(pageState?.pathname || diagnostic.path);
+    if (pathname.startsWith('/')) return pathname;
+    try {
+      if (pageState?.url) return new URL(String(pageState.url)).pathname || '';
+    } catch {}
+    return pathname;
+  }
+
+  function isSignInPath(pathname = '') {
+    return /\/sign-?in(?:\/|$)/i.test(String(pathname || ''));
+  }
+
+  function isOauthPath(pathname = '') {
+    return /\/oauth2\//i.test(String(pathname || ''));
+  }
+
+  function isSignInPageState(pageState = {}) {
+    return cleanString(pageState?.state) === 'sign_in'
+      || isSignInPath(resolvePagePath(pageState));
+  }
+
+  function canAcceptAuthorizationCode(pageState = {}, consentSubmitted = false) {
+    if (cleanString(pageState?.state) !== 'code_page') return false;
+    const code = cleanString(pageState?.code);
+    if (!code || code.length < 20) return false;
+    const pathname = resolvePagePath(pageState);
+    if (isSignInPath(pathname)) return false;
+    return consentSubmitted || isOauthPath(pathname) || /\/oauth2\//i.test(cleanString(pageState?.url));
+  }
+
   function createGrokSub2ApiOAuthRunner(deps = {}) {
     const {
       addLog = async () => {},
@@ -94,6 +131,11 @@
       waitForTabStableComplete = null,
       GROK_SUB2API_OAUTH_INJECT_FILES = null,
       now = () => Date.now(),
+      preOAuthSettleMs = PRE_OAUTH_SETTLE_MS,
+      oauthSignInStuckMs = OAUTH_SIGN_IN_STUCK_MS,
+      oauthSignInMaxReloads = OAUTH_SIGN_IN_MAX_RELOADS,
+      oauthReloadDelayMs = OAUTH_RELOAD_DELAY_MS,
+      postConsentWaitMs = POST_CONSENT_WAIT_MS,
     } = deps;
 
     if (typeof completeNodeFromBackground !== 'function') {
@@ -125,10 +167,11 @@
 
     function summarizePageState(pageState = {}) {
       const diagnostic = isPlainObject(pageState?.diagnostic) ? pageState.diagnostic : {};
+      const path = resolvePagePath(pageState) || cleanString(diagnostic.path) || 'unknown';
       return [
         `state=${cleanString(pageState?.state) || 'unknown'}`,
         `host=${cleanString(diagnostic.host) || 'unknown'}`,
-        `path=${cleanString(diagnostic.path) || 'unknown'}`,
+        `path=${path}`,
         `ready=${cleanString(diagnostic.readyState) || 'unknown'}`,
         `visible=${Number.isFinite(Number(diagnostic.visibleActionCount)) ? Number(diagnostic.visibleActionCount) : 'unknown'}`,
         `allow=${Number.isFinite(Number(diagnostic.allowActionCount)) ? Number(diagnostic.allowActionCount) : 'unknown'}`,
@@ -195,6 +238,22 @@
       return tabId;
     }
 
+    async function reopenAuthorizationTab(authUrl, previousTabId, nodeId = '', attempt = 1) {
+      await logDiagnostic(
+        `OAuth 授权页持续停在登录页，重新打开授权链接（${attempt}/${oauthSignInMaxReloads}）。`,
+        nodeId,
+        'warn'
+      );
+      await sleepWithStop(oauthReloadDelayMs);
+      const tabId = await openAuthorizationTab(authUrl, previousTabId);
+      const latestState = await getState();
+      await applyRuntimeState(latestState, {
+        oauth: { authTabId: tabId },
+      });
+      await prepareAuthorizationTab(tabId, nodeId, true);
+      return tabId;
+    }
+
     async function startFreshSession(currentState = {}, nodeId = '', options = {}) {
       const runtime = readRuntime(currentState);
       const config = resolveConfig(currentState);
@@ -229,8 +288,10 @@
           targetUrl: context.targetUrl,
         },
       });
-      await logDiagnostic(`已打开授权标签页 ${tabId}，正在等待页面就绪。`, nodeId);
-      await waitForAuthorizationPageReady(tabId, nodeId);
+      await logDiagnostic(`已打开授权标签页 ${tabId}，正在等待同意页就绪。`, nodeId);
+      await waitForAuthorizationPageReady(tabId, nodeId, {
+        acceptStates: ['consent_page'],
+      });
       await log('SUB2API OAuth 授权页已加载完成。', 'ok', nodeId);
       if (options.completeNode !== false) {
         await completeNodeFromBackground(nodeId, payload);
@@ -324,33 +385,38 @@
                 && element.getAttribute('aria-disabled') !== 'true'
                 && texts.some((text) => /^(?:允许|Allow|Authorize|Continue)$/i.test(text));
             });
+            const pathname = location.pathname || '';
             const diagnostic = {
               host: location.hostname,
-              path: location.pathname,
+              path: pathname,
               readyState: document.readyState,
               visibleActionCount: visibleActions.length,
               allowActionCount: allowActions.length,
             };
             const pageText = cleanText(`${document.title || ''} ${document.body?.textContent || ''}`);
-            if (/授权失败|拒绝授权|authorization (?:failed|denied)|access denied|something went wrong/i.test(pageText)) {
-              return { state: 'error_page', error: 'Grok OAuth 授权页面显示失败。', diagnostic };
-            }
             const isConsentPage = /授权\s*Grok Build|Authorize\s+Grok Build/i.test(pageText);
+            const onSignIn = /\/sign-?in(?:\/|$)/i.test(pathname);
             const consentAction = isConsentPage ? allowActions[0] || null : null;
             if (consentAction) {
               if (requestedAction === 'confirm-consent') {
                 consentAction.click();
-                return { state: 'consent_submitted', clicked: true, diagnostic };
+                return { state: 'consent_submitted', clicked: true, pathname, diagnostic };
               }
-              return { state: 'consent_page', diagnostic };
+              return { state: 'consent_page', pathname, diagnostic };
             }
-            if (/输入此代码以完成登录|Enter this code to (?:complete|finish) (?:sign[ -]?in|login)|copy (?:the )?code to Grok Build/i.test(pageText)) {
-              return { state: 'code_page', diagnostic };
+            if (onSignIn && !isConsentPage) {
+              return { state: 'sign_in', pathname, diagnostic };
             }
-            if (!isConsentPage) {
-              return { state: 'loading', diagnostic };
+            if (/输入此代码以完成登录|Enter this code to (?:complete|finish) sign(?:ing)?[ -]?in|Enter this code to (?:complete|finish) login|copy (?:the )?code(?: below)? (?:into|to) Grok Build|将下面的代码复制到\s*Grok Build/i.test(pageText)) {
+              return { state: 'code_page', pathname, diagnostic };
             }
-            return { state: 'consent_waiting', diagnostic };
+            if (isConsentPage) {
+              return { state: 'consent_waiting', pathname, diagnostic };
+            }
+            if (/授权失败|拒绝授权|authorization (?:failed|denied)|access denied|something went wrong/i.test(pageText)) {
+              return { state: 'error_page', error: 'Grok OAuth 授权页面显示失败。', pathname, diagnostic };
+            }
+            return { state: 'loading', pathname, diagnostic };
           },
         });
         const result = executions?.map((entry) => entry?.result).find(isPlainObject);
@@ -364,7 +430,10 @@
       return runAuthorizationPageScript(tabId, 'inspect-state');
     }
 
-    async function waitForAuthorizationPageReady(tabId, nodeId = '') {
+    async function waitForAuthorizationPageReady(tabId, nodeId = '', options = {}) {
+      const acceptStates = Array.isArray(options.acceptStates) && options.acceptStates.length
+        ? options.acceptStates
+        : ['consent_page'];
       await prepareAuthorizationTab(tabId, nodeId, true);
       const maxAttempts = Math.max(
         1,
@@ -372,6 +441,7 @@
       );
       let lastState = 'loading';
       let lastFingerprint = '';
+      let lastIgnoredCodeFingerprint = '';
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         throwIfStopped();
@@ -387,8 +457,19 @@
           );
           lastFingerprint = fingerprint;
         }
-        if (lastState === 'consent_page' || lastState === 'code_page') {
+        if (acceptStates.includes(lastState)) {
           return pageState;
+        }
+        if (lastState === 'code_page' && !acceptStates.includes('code_page')) {
+          const ignoredCodeFingerprint = `${fingerprint}:${resolvePagePath(pageState)}`;
+          if (ignoredCodeFingerprint !== lastIgnoredCodeFingerprint) {
+            await logDiagnostic(
+              `忽略未授权 code 状态（path=${resolvePagePath(pageState) || 'unknown'}），继续等待同意页。`,
+              nodeId,
+              'warn'
+            );
+            lastIgnoredCodeFingerprint = ignoredCodeFingerprint;
+          }
         }
         if (lastState === 'error_page') {
           throw new Error(pageState?.error || 'Grok OAuth 授权页加载失败。');
@@ -450,6 +531,10 @@
       const currentState = await getState();
       const config = resolveConfig(currentState);
       try {
+        if (preOAuthSettleMs > 0) {
+          await log(`注册会话沉降：等待 ${Math.round(preOAuthSettleMs / 1000)} 秒后开始 OAuth...`, 'info', nodeId);
+          await sleepWithStop(preOAuthSettleMs);
+        }
         await log('正在向 SUB2API 获取 Grok OAuth 授权地址...', 'info', nodeId);
         await startFreshSession(currentState, nodeId);
       } catch (error) {
@@ -482,9 +567,10 @@
           runtime = readRuntime(currentState);
         }
 
-        const tabId = await ensureAuthorizationTab(currentState);
+        let tabId = await ensureAuthorizationTab(currentState);
         currentState = await getState();
         runtime = readRuntime(currentState);
+        const authUrl = cleanString(runtime.oauth?.authUrl);
         targetUrl = runtime.upload?.targetUrl || targetUrl;
         await applyRuntimeState(currentState, {
           oauth: { status: 'authorizing', lastError: '' },
@@ -500,8 +586,38 @@
         let consentSubmitted = false;
         let lastDirectFingerprint = '';
         let lastContentFingerprint = '';
+        let lastRejectedCodeFingerprint = '';
+        let signInSince = 0;
+        let authorizationReloads = 0;
+
+        async function reopenStuckSignInPage(pageState = {}) {
+          if (consentSubmitted || !authUrl || !isSignInPageState(pageState)) {
+            signInSince = 0;
+            return false;
+          }
+          if (!signInSince) {
+            signInSince = now();
+            return false;
+          }
+          if (
+            authorizationReloads >= oauthSignInMaxReloads
+            || now() - signInSince < oauthSignInStuckMs
+          ) {
+            return false;
+          }
+          authorizationReloads += 1;
+          tabId = await reopenAuthorizationTab(authUrl, tabId, nodeId, authorizationReloads);
+          signInSince = 0;
+          lastDirectFingerprint = '';
+          lastContentFingerprint = '';
+          lastRejectedCodeFingerprint = '';
+          return true;
+        }
+
         while (now() < deadline) {
           throwIfStopped();
+          currentState = await getState();
+          runtime = readRuntime(currentState);
           if (!consentSubmitted) {
             const directConsentResult = await confirmConsentDirectly(tabId);
             const directFingerprint = getPageStateFingerprint(directConsentResult || {}, 'dom');
@@ -513,8 +629,11 @@
               await logDiagnostic(`标签页 ${tabId} 已点击允许，等待 OAuth 代码页。`, nodeId);
               await log('正在自动确认 Grok OAuth 授权...', 'info', nodeId);
               consentSubmitted = true;
-              await sleepWithStop(800);
-              await ensureAuthorizationTab(await getState());
+              await sleepWithStop(postConsentWaitMs);
+              tabId = await ensureAuthorizationTab(await getState());
+              continue;
+            }
+            if (await reopenStuckSignInPage(directConsentResult || {})) {
               continue;
             }
           }
@@ -530,18 +649,38 @@
               await confirmConsent();
               consentSubmitted = true;
             }
-            await sleepWithStop(800);
-            await ensureAuthorizationTab(await getState());
+            await sleepWithStop(postConsentWaitMs);
+            tabId = await ensureAuthorizationTab(await getState());
             continue;
           }
           if (pageState.state === 'error_page') {
             throw new Error(pageState.error || 'Grok OAuth 授权失败。');
           }
-          if (pageState.state === 'code_page') {
-            authorizationCode = cleanString(pageState.code);
-            if (!authorizationCode) {
-              throw new Error('Grok OAuth 授权页未返回有效 code。');
+          if (pageState.state === 'sign_in') {
+            if (await reopenStuckSignInPage(pageState)) {
+              continue;
             }
+            await sleepWithStop(800);
+            continue;
+          }
+          if (pageState.state === 'code_page' && !canAcceptAuthorizationCode(pageState, consentSubmitted)) {
+            const rejectedFingerprint = `${contentFingerprint}:${consentSubmitted}`;
+            if (rejectedFingerprint !== lastRejectedCodeFingerprint) {
+              await logDiagnostic(
+                `丢弃不可信 code 状态（consentSubmitted=${consentSubmitted}; path=${resolvePagePath(pageState) || 'unknown'}）。`,
+                nodeId,
+                'warn'
+              );
+              lastRejectedCodeFingerprint = rejectedFingerprint;
+            }
+            if (await reopenStuckSignInPage(pageState)) {
+              continue;
+            }
+            await sleepWithStop(800);
+            continue;
+          }
+          if (canAcceptAuthorizationCode(pageState, consentSubmitted)) {
+            authorizationCode = cleanString(pageState.code);
             await applyRuntimeState(currentState, {
               oauth: { status: 'creating_account', lastError: '' },
               upload: {
@@ -616,8 +755,15 @@
 
   return {
     AUTHORIZATION_TIMEOUT_MS,
+    AUTHORIZATION_PAGE_READY_TIMEOUT_MS,
+    OAUTH_SIGN_IN_MAX_RELOADS,
+    OAUTH_SIGN_IN_STUCK_MS,
+    PRE_OAUTH_SETTLE_MS,
     SESSION_FRESHNESS_MS,
+    canAcceptAuthorizationCode,
     createGrokSub2ApiOAuthRunner,
+    isSignInPageState,
+    resolvePagePath,
     resolveConfig,
     sanitizeSensitiveMessage,
   };

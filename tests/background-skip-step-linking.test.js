@@ -29,6 +29,15 @@ const KIRO_NODE_IDS = [
   'kiro-upload-credential',
 ];
 
+const GROK_NODE_IDS = [
+  'grok-open-signup-page',
+  'grok-submit-email',
+  'grok-submit-verification-code',
+  'grok-submit-profile',
+  'grok-start-sub2api-oauth',
+  'grok-complete-sub2api-oauth',
+];
+
 function extractFunction(name) {
   const markers = [`async function ${name}(`, `function ${name}(`];
   const start = markers
@@ -225,4 +234,69 @@ test('skipNode cascades from kiro open-register through the whole register branc
     events.logs[1]?.message,
     '节点 kiro-open-register-page 已跳过，节点 kiro-submit-email、kiro-submit-name、kiro-submit-verification-code、kiro-submit-password、kiro-complete-register-consent 也已同时跳过。'
   );
+});
+
+test('skipNode cascades from Grok step 1 through the remaining registration steps only', async () => {
+  const statuses = Object.fromEntries(GROK_NODE_IDS.map((nodeId) => [nodeId, 'pending']));
+  const events = {
+    setNodeStatusCalls: [],
+    logs: [],
+  };
+  const api = createApi(GROK_NODE_IDS);
+
+  globalThis.ensureManualInteractionAllowed = async () => ({
+    nodeStatuses: { ...statuses },
+  });
+  globalThis.getState = async () => ({
+    nodeStatuses: { ...statuses },
+  });
+  globalThis.setNodeStatus = async (nodeId, status) => {
+    events.setNodeStatusCalls.push({ nodeId, status });
+    statuses[nodeId] = status;
+  };
+  globalThis.addLog = async (message, level) => {
+    events.logs.push({ message, level });
+  };
+
+  const result = await api.skipNode('grok-open-signup-page');
+
+  assert.deepStrictEqual(result, { ok: true, nodeId: 'grok-open-signup-page', status: 'skipped' });
+  assert.deepStrictEqual(events.setNodeStatusCalls, [
+    { nodeId: 'grok-open-signup-page', status: 'skipped' },
+    { nodeId: 'grok-submit-email', status: 'skipped' },
+    { nodeId: 'grok-submit-verification-code', status: 'skipped' },
+    { nodeId: 'grok-submit-profile', status: 'skipped' },
+  ]);
+  assert.equal(statuses['grok-start-sub2api-oauth'], 'pending');
+  assert.equal(statuses['grok-complete-sub2api-oauth'], 'pending');
+});
+
+test('skipNode permits skipping a Grok publication node without the registration branch', async () => {
+  const nodeIds = [
+    'grok-open-signup-page',
+    'grok-submit-email',
+    'grok-submit-verification-code',
+    'grok-submit-profile',
+    'grok-extract-sso-cookie',
+    'grok-upload-sso-to-grok2api',
+  ];
+  const statuses = Object.fromEntries(nodeIds.map((nodeId) => [nodeId, 'pending']));
+  const events = { setNodeStatusCalls: [] };
+  const api = createApi(nodeIds);
+
+  globalThis.ensureManualInteractionAllowed = async () => ({ nodeStatuses: { ...statuses } });
+  globalThis.getState = async () => ({ nodeStatuses: { ...statuses } });
+  globalThis.setNodeStatus = async (nodeId, status) => {
+    events.setNodeStatusCalls.push({ nodeId, status });
+    statuses[nodeId] = status;
+  };
+  globalThis.addLog = async () => {};
+
+  const result = await api.skipNode('grok-extract-sso-cookie');
+
+  assert.deepStrictEqual(result, { ok: true, nodeId: 'grok-extract-sso-cookie', status: 'skipped' });
+  assert.deepStrictEqual(events.setNodeStatusCalls, [
+    { nodeId: 'grok-extract-sso-cookie', status: 'skipped' },
+  ]);
+  assert.equal(statuses['grok-submit-profile'], 'pending');
 });
