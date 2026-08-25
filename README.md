@@ -18,15 +18,25 @@
 
 </div>
 
-## Star History
+## IPWO 住宅代理
 
-<a href="https://www.star-history.com/?repos=QLHazyCoder%2FFlowPilot&type=timeline&logscale&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=QLHazyCoder/FlowPilot&type=timeline&logscale&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=QLHazyCoder/FlowPilot&type=timeline&logscale&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=QLHazyCoder/FlowPilot&type=timeline&logscale&legend=top-left" />
-  </picture>
+<div align="center">
+
+<a href="https://www.ipwo.net/?ref=githubFlowPilot" target="_blank" rel="noreferrer">
+  <img alt="IPWO住宅代理" src="./docs/images/ipwo-banner.png" />
 </a>
+
+</div>
+
+IPWO 住宅代理，面向 AI 自动化、浏览器操作和多账号管理等场景。
+
+支持灵活配置不同地区网络环境，可结合 OpenAI、Kiro、Grok 等平台的注册、授权及自动化流程使用，为开发者提供便捷的代理资源选择。
+
+195+地区动静态IP资源提供免费测试，优惠折扣码：0204。
+
+[https://www.ipwo.net/?ref=githubFlowPilot](https://www.ipwo.net/?ref=githubFlowPilot)。
+
+广告合作请联系我：2825305047
 
 ## 主要功能
 
